@@ -1,6 +1,7 @@
 *.swp
 *.exe
 *.pyc
+*.iml
 
 bin/
 
@@ -18,3 +19,4 @@ mongostat/main/mongostat
 
 .gopath
 .godeps
+.idea

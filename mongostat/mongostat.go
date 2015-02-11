@@ -263,7 +263,13 @@ func (node *NodeMonitor) Poll(discover chan string, all bool, checkShards bool, 
 	s.SetSocketTimeout(0)
 	defer s.Close()
 
-	err = s.DB("admin").Run(bson.D{{"serverStatus", 1}, {"recordStats", 0}}, result)
+	ssCommand := bson.D{{"serverStatus", 1}, {"recordStats", 0}}
+	if all {
+		ssCommand = append(ssCommand, bson.DocElem{"tcmalloc", 1})
+	}
+
+	log.Logf(log.DebugHigh, "sending command: %+v", ssCommand)
+	err = s.DB("admin").Run(ssCommand, result)
 	if err != nil {
 		log.Logf(log.DebugLow, "got error calling serverStatus against server %v", node.host)
 		result = nil
@@ -275,6 +281,7 @@ func (node *NodeMonitor) Poll(discover chan string, all bool, checkShards bool, 
 		node.LastStatus = result
 	}()
 
+	log.Logf(log.DebugHigh, "received result: %+v", result)
 	node.Err = nil
 	result.SampleTime = time.Now()
 

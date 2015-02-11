@@ -17,13 +17,15 @@ const (
 
 // Flags to determine cases when to activate/deactivate columns for output.
 const (
-	Always   = 1 << iota // always activate the column
-	Discover             // only active when mongostat is in discover mode
-	Repl                 // only active if one of the nodes being monitored is in a replset
-	Locks                // only active if node is capable of calculating lock info
-	AllOnly              // only active if mongostat was run with --all option
-	MMAPOnly             // only active if node has mmap-specific fields
-	WTOnly               // only active if node has wiredtiger-specific fields
+	Always       = 1 << iota // always activate the column
+	Discover                 // only active when mongostat is in discover mode
+	Repl                     // only active if one of the nodes being monitored is in a replset
+	Locks                    // only active if node is capable of calculating lock info
+	TCMallocOnly             // only active if node is using tcmalloc allocator
+	MetricsOnly              // only active if node supports metrics
+	AllOnly                  // only active if mongostat was run with --all option
+	MMAPOnly                 // only active if node has mmap-specific fields
+	WTOnly                   // only active if node has wiredtiger-specific fields
 )
 
 type StatLines []StatLine
@@ -69,6 +71,7 @@ type ServerStatus struct {
 	Repl               *ReplStatus            `bson:"repl"`
 	ShardCursorType    map[string]interface{} `bson:"shardCursorType"`
 	StorageEngine      map[string]string      `bson:"storageEngine"`
+	TCMalloc           *TCMalloc              `bson:"tcmalloc"`
 	WiredTiger         *WiredTiger            `bson:"wiredTiger"`
 }
 
@@ -112,6 +115,43 @@ type CacheStats struct {
 // TransactionStats stores transaction checkpoints in WiredTiger.
 type TransactionStats struct {
 	TransCheckpoints int64 `bson:"transaction checkpoints"`
+}
+
+type TCMalloc struct {
+	Generic       map[string]interface{} `bson:"generic"`
+	TCMallocStats TCMallocStats          `bson:"tcmalloc"`
+}
+
+type TCMallocStats struct {
+	PageHeapFreeBytes            int64 `bson:"pageheap_free_bytes"`
+	PageHeapUnmappedBytes        int64 `bson:"pageheap_unmapped_bytes"`
+	MaxTotalThreadCacheBytes     int64 `bson:"max_total_thread_cache_bytes"`
+	CurrentTotalThreadCacheBytes int64 `bson:"current_total_thread_cache_bytes"`
+	CentralCacheFreeBytes        int64 `bson:"central_cache_free_bytes"`
+	TransferCacheFreeBytes       int64 `bson:"transfer_cache_free_bytes"`
+	ThreadCacheFreeBytes         int64 `bson:"thread_cache_free_bytes"`
+}
+
+type Metrics struct {
+	Operation     Operation     `bson:"operation"`
+	QueryExecutor QueryExecutor `bson:"queryExecutor"`
+	Record        Record        `bson:"record"`
+}
+
+type Operation struct {
+	FastMod        int64 `bson:"fastmod"`
+	IdHack         int64 `bson:"idhack"`
+	ScanAndOrder   int64 `bson:"scanAndOrder"`
+	WriteConflicts int64 `bson:"writeConflicts"`
+}
+
+type QueryExecutor struct {
+	NScanned        int64 `bson:"scanned"`
+	NScannedObjects int64 `bson:"scannedObjects"`
+}
+
+type Record struct {
+	Moves int64 `bson:"moves"`
 }
 
 // ReplStatus stores data related to replica sets.
@@ -271,10 +311,13 @@ var StatHeaders = []StatHeader{
 	{"command", Always},
 	{"% dirty", WTOnly},
 	{"% used", WTOnly},
+	{"rAv|wAv", WTOnly},
 	{"flushes", Always},
 	{"mapped", MMAPOnly},
 	{"vsize", Always},
 	{"res", Always},
+	{"tcmalloc %", TCMallocOnly},
+	{"tcmalloc", TCMallocOnly},
 	{"non-mapped", MMAPOnly | AllOnly},
 	{"faults", MMAPOnly},
 	{"glems", AllOnly},
@@ -289,6 +332,11 @@ var StatHeaders = []StatHeader{
 	{"netIn", Always},
 	{"netOut", Always},
 	{"conn", Always},
+	{"sao", MetricsOnly},
+	{"wc", MetricsOnly},
+	{"nscan", MetricsOnly},
+	{"nsObj", MetricsOnly},
+	{"moves", MetricsOnly},
 	{"set", Repl},
 	{"repl", Repl},
 	{"time", Always},
@@ -378,6 +426,13 @@ type StatLine struct {
 	GLEMillis   int64
 	GLETimeouts int64
 
+	// TCMalloc utilization
+	ThreadCacheUsedPercent float64
+	ThreadCacheUsed        int64
+
+	// Tickets available (wiredtiger only)
+	WriteTicketsAvailable, ReadTicketsAvailable int64
+
 	// Replicated Opcounter fields
 	InsertR, QueryR, UpdateR, DeleteR, GetMoreR, CommandR int64
 	Flushes                                               int64
@@ -388,6 +443,9 @@ type StatLine struct {
 	ActiveReaders, ActiveWriters                          int64
 	NetIn, NetOut                                         int64
 	NumConnections                                        int64
+	ScanAndOrder, WriteConflicts                          int64
+	NScanned, NScannedObjects                             int64
+	RecordMoves                                           int64
 	ReplSetName                                           string
 	NodeType                                              string
 }
@@ -486,6 +544,23 @@ func (jlf *JSONLineFormatter) FormatLines(lines []StatLine, index int, discover 
 		lineJson["vsize"] = text.FormatMegabyteAmount(int64(line.Virtual))
 		lineJson["res"] = text.FormatMegabyteAmount(int64(line.Resident))
 
+		if lineFlags&TCMallocOnly > 0 {
+			if line.ThreadCacheUsedPercent >= 0 {
+				lineJson["tcmalloc %"] = fmt.Sprintf("%.1f", line.ThreadCacheUsedPercent*100)
+			}
+			if line.ThreadCacheUsed >= 0 {
+				lineJson["tcmalloc"] = text.FormatByteAmount(line.ThreadCacheUsed)
+			}
+		}
+
+		if lineFlags&MetricsOnly&AllOnly > 0 {
+			lineJson["sao"] = fmt.Sprintf("%v", line.ScanAndOrder)
+			lineJson["wc"] = fmt.Sprintf("%v", line.WriteConflicts)
+			lineJson["nscan"] = fmt.Sprintf("%v", line.NScanned)
+			lineJson["nsObj"] = fmt.Sprintf("%v", line.NScannedObjects)
+			lineJson["moves"] = fmt.Sprintf("%v", line.RecordMoves)
+		}
+
 		// add mmapv1-specific fields
 		if lineFlags&MMAPOnly > 0 {
 			lineJson["flushes"] = fmt.Sprintf("%v", line.Flushes)
@@ -569,8 +644,14 @@ func getLineFlags(lines []StatLine) int {
 		if line.StorageEngine == "mmapv1" {
 			flags |= MMAPOnly
 		}
-		if line.CacheDirtyPercent >= 0 || line.CacheUsedPercent >= 0 {
+		if line.CacheDirtyPercent >= 0 || line.CacheUsedPercent >= 0 || line.WriteTicketsAvailable >= 0 || line.ReadTicketsAvailable >= 0 {
 			flags |= WTOnly
+		}
+		if line.ThreadCacheUsedPercent >= 0 {
+			flags |= TCMallocOnly
+		}
+		if line.ScanAndOrder >= 0 {
+			flags |= MetricsOnly
 		}
 	}
 	return flags
@@ -641,6 +722,8 @@ func (glf *GridLineFormatter) FormatLines(lines []StatLine, index int, discover 
 			} else {
 				glf.Writer.WriteCell(fmt.Sprintf("%.1f", line.CacheUsedPercent*100))
 			}
+
+			glf.Writer.WriteCell(fmt.Sprintf("%v|%v", line.ReadTicketsAvailable, line.WriteTicketsAvailable))
 		}
 
 		glf.Writer.WriteCell(fmt.Sprintf("%v", line.Flushes))
@@ -659,6 +742,11 @@ func (glf *GridLineFormatter) FormatLines(lines []StatLine, index int, discover 
 		// Columns for Virtual and Resident are always active
 		glf.Writer.WriteCell(text.FormatMegabyteAmount(int64(line.Virtual)))
 		glf.Writer.WriteCell(text.FormatMegabyteAmount(int64(line.Resident)))
+
+		if lineFlags&TCMallocOnly > 0 {
+			glf.Writer.WriteCell(fmt.Sprintf("%.1f", line.ThreadCacheUsedPercent*100))
+			glf.Writer.WriteCell(text.FormatByteAmount(line.ThreadCacheUsed))
+		}
 
 		if lineFlags&MMAPOnly > 0 {
 			if lineFlags&AllOnly > 0 {
@@ -738,6 +826,17 @@ func (glf *GridLineFormatter) FormatLines(lines []StatLine, index int, discover 
 		glf.Writer.WriteCell(text.FormatBits(line.NetOut))
 
 		glf.Writer.WriteCell(fmt.Sprintf("%v", line.NumConnections))
+
+		if lineFlags&MetricsOnly > 0 {
+			if lineFlags&AllOnly > 0 {
+				glf.Writer.WriteCell(fmt.Sprintf("%v", line.ScanAndOrder))
+				glf.Writer.WriteCell(fmt.Sprintf("%v", line.WriteConflicts))
+				glf.Writer.WriteCell(fmt.Sprintf("%v", line.NScanned))
+				glf.Writer.WriteCell(fmt.Sprintf("%v", line.NScannedObjects))
+				glf.Writer.WriteCell(fmt.Sprintf("%v", line.RecordMoves))
+			}
+		}
+
 		if discover || lineFlags&Repl > 0 { //only show these fields when in discover or repl mode.
 			glf.Writer.WriteCell(line.ReplSetName)
 			glf.Writer.WriteCell(line.NodeType)
@@ -819,6 +918,33 @@ func NewStatLine(oldStat, newStat ServerStatus, key string, all bool, sampleSecs
 		returnVal.CacheUsedPercent = float64(newStat.WiredTiger.Cache.CurrentCachedBytes) / float64(newStat.WiredTiger.Cache.MaxBytesConfigured)
 	} else if newStat.BackgroundFlushing != nil && oldStat.BackgroundFlushing != nil {
 		returnVal.Flushes = newStat.BackgroundFlushing.Flushes - oldStat.BackgroundFlushing.Flushes
+	}
+
+	if newStat.WiredTiger != nil {
+		returnVal.ReadTicketsAvailable = newStat.WiredTiger.ConcurrentTransactions.ConcurrentTransactionRead.Available
+		returnVal.WriteTicketsAvailable = newStat.WiredTiger.ConcurrentTransactions.ConcurrentTransactionWrite.Available
+	}
+
+	returnVal.ScanAndOrder = -1
+	returnVal.WriteConflicts = -1
+	returnVal.NScanned = -1
+	returnVal.NScannedObjects = -1
+	returnVal.RecordMoves = -1
+	if newStat.Metrics != nil && oldStat.Metrics != nil && all {
+		returnVal.ScanAndOrder = diff(newStat.Metrics.Operation.ScanAndOrder, oldStat.Metrics.Operation.ScanAndOrder, sampleSecs)
+		returnVal.WriteConflicts = diff(newStat.Metrics.Operation.WriteConflicts, oldStat.Metrics.Operation.WriteConflicts, sampleSecs)
+		returnVal.NScanned = diff(newStat.Metrics.QueryExecutor.NScanned, oldStat.Metrics.QueryExecutor.NScanned, sampleSecs)
+		returnVal.NScannedObjects = diff(newStat.Metrics.QueryExecutor.NScannedObjects, oldStat.Metrics.QueryExecutor.NScannedObjects, sampleSecs)
+		returnVal.RecordMoves = diff(newStat.Metrics.Record.Moves, oldStat.Metrics.Record.Moves, sampleSecs)
+	}
+
+	returnVal.ThreadCacheUsedPercent = -1
+	returnVal.ThreadCacheUsed = -1
+	if newStat.TCMalloc != nil {
+		returnVal.ThreadCacheUsed = newStat.TCMalloc.TCMallocStats.CurrentTotalThreadCacheBytes
+		if newStat.TCMalloc.TCMallocStats.MaxTotalThreadCacheBytes > 0 {
+			returnVal.ThreadCacheUsedPercent = float64(newStat.TCMalloc.TCMallocStats.CurrentTotalThreadCacheBytes) / float64(newStat.TCMalloc.TCMallocStats.MaxTotalThreadCacheBytes)
+		}
 	}
 
 	returnVal.Time = newStat.SampleTime
