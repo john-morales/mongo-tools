@@ -314,7 +314,7 @@ func (node *NodeMonitor) Watch(sleep time.Duration, discover chan string, cluste
 	go func() {
 		cycle := uint64(0)
 		for {
-			sampleDiff := int64(sleep / time.Second)
+			sampleDiff := int64(sleep / time.Millisecond)
 			log.Logf(log.DebugHigh, "polling server: %v", node.host)
 			statLine := node.Poll(discover, node.All, cycle%10 == 1, sampleDiff)
 			if statLine != nil {
