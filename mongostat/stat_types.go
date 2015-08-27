@@ -75,20 +75,6 @@ type ServerStatus struct {
 	WiredTiger         *WiredTiger            `bson:"wiredTiger"`
 }
 
-type Metrics struct {
-	GetLastError GetLastError `bson:"getLastError"`
-}
-
-type GetLastError struct {
-	Wtime     GLETime `bson:"wtime"`
-	Wtimeouts int64   `bson:"wtimeouts"`
-}
-
-type GLETime struct {
-	Num         int64 `bson:"num"`
-	TotalMillis int64 `bson:"totalMillis"`
-}
-
 // WiredTiger stores information related to the WiredTiger storage engine.
 type WiredTiger struct {
 	Transaction TransactionStats       `bson:"transaction"`
@@ -133,9 +119,28 @@ type TCMallocStats struct {
 }
 
 type Metrics struct {
+	Document      Document      `bson:"document"`
+	GetLastError  GetLastError  `bson:"getLastError"`
 	Operation     Operation     `bson:"operation"`
 	QueryExecutor QueryExecutor `bson:"queryExecutor"`
 	Record        Record        `bson:"record"`
+}
+
+type Document struct {
+	Returned	int64	`bson:"returned"`
+	Inserted	int64	`bson:"inserted"`
+	Updated		int64	`bson:"updated"`
+	Deleted		int64	`bson:"deleted"`
+}
+
+type GetLastError struct {
+	Wtime     GLETime `bson:"wtime"`
+	Wtimeouts int64   `bson:"wtimeouts"`
+}
+
+type GLETime struct {
+	Num         int64 `bson:"num"`
+	TotalMillis int64 `bson:"totalMillis"`
 }
 
 type Operation struct {
@@ -336,6 +341,7 @@ var StatHeaders = []StatHeader{
 	{"wc", MetricsOnly},
 	{"nscan", MetricsOnly},
 	{"nsObj", MetricsOnly},
+	{"r|i|u|d", MetricsOnly},
 	{"moves", MetricsOnly},
 	{"set", Repl},
 	{"repl", Repl},
@@ -445,6 +451,7 @@ type StatLine struct {
 	NumConnections                                        int64
 	ScanAndOrder, WriteConflicts                          int64
 	NScanned, NScannedObjects                             int64
+	Returned, Inserted, Updated, Deleted                  int64
 	RecordMoves                                           int64
 	ReplSetName                                           string
 	NodeType                                              string
@@ -559,6 +566,10 @@ func (jlf *JSONLineFormatter) FormatLines(lines []StatLine, index int, discover 
 			lineJson["nscan"] = fmt.Sprintf("%v", line.NScanned)
 			lineJson["nsObj"] = fmt.Sprintf("%v", line.NScannedObjects)
 			lineJson["moves"] = fmt.Sprintf("%v", line.RecordMoves)
+			lineJson["nr"] = fmt.Sprintf("%v", line.Returned)
+			lineJson["ni"] = fmt.Sprintf("%v", line.Inserted)
+			lineJson["nu"] = fmt.Sprintf("%v", line.Updated)
+			lineJson["nd"] = fmt.Sprintf("%v", line.Deleted)
 		}
 
 		// add mmapv1-specific fields
@@ -644,7 +655,7 @@ func getLineFlags(lines []StatLine) int {
 		if line.StorageEngine == "mmapv1" {
 			flags |= MMAPOnly
 		}
-		if line.CacheDirtyPercent >= 0 || line.CacheUsedPercent >= 0 || line.WriteTicketsAvailable >= 0 || line.ReadTicketsAvailable >= 0 {
+		if line.CacheDirtyPercent >= 0 || line.CacheUsedPercent >= 0 {
 			flags |= WTOnly
 		}
 		if line.ThreadCacheUsedPercent >= 0 {
@@ -833,6 +844,7 @@ func (glf *GridLineFormatter) FormatLines(lines []StatLine, index int, discover 
 				glf.Writer.WriteCell(fmt.Sprintf("%v", line.WriteConflicts))
 				glf.Writer.WriteCell(fmt.Sprintf("%v", line.NScanned))
 				glf.Writer.WriteCell(fmt.Sprintf("%v", line.NScannedObjects))
+				glf.Writer.WriteCell(fmt.Sprintf("%v|%v|%v|%v", line.Returned, line.Inserted, line.Updated, line.Deleted))
 				glf.Writer.WriteCell(fmt.Sprintf("%v", line.RecordMoves))
 			}
 		}
@@ -869,8 +881,9 @@ func (glf *GridLineFormatter) FormatLines(lines []StatLine, index int, discover 
 	return returnVal
 }
 
-func diff(newVal, oldVal, sampleTime int64) int64 {
-	return (newVal - oldVal) * 1000 / sampleTime
+func diff(newVal, oldVal, sampleTimeMillis int64) int64 {
+	return (newVal - oldVal) * 1000 / sampleTimeMillis
+	//return int64(float64(newVal - oldVal) / (float64(sampleTimeMillis) / 1000.0))
 }
 
 // NewStatLine constructs a StatLine object from two ServerStatus objects.
@@ -921,8 +934,8 @@ func NewStatLine(oldStat, newStat ServerStatus, key string, all bool, sampleSecs
 	}
 
 	if newStat.WiredTiger != nil {
-		returnVal.ReadTicketsAvailable = newStat.WiredTiger.ConcurrentTransactions.ConcurrentTransactionRead.Available
-		returnVal.WriteTicketsAvailable = newStat.WiredTiger.ConcurrentTransactions.ConcurrentTransactionWrite.Available
+		returnVal.ReadTicketsAvailable = newStat.WiredTiger.Concurrent.Read.Out
+		returnVal.WriteTicketsAvailable = newStat.WiredTiger.Concurrent.Write.Out
 	}
 
 	returnVal.ScanAndOrder = -1
@@ -936,6 +949,10 @@ func NewStatLine(oldStat, newStat ServerStatus, key string, all bool, sampleSecs
 		returnVal.NScanned = diff(newStat.Metrics.QueryExecutor.NScanned, oldStat.Metrics.QueryExecutor.NScanned, sampleSecs)
 		returnVal.NScannedObjects = diff(newStat.Metrics.QueryExecutor.NScannedObjects, oldStat.Metrics.QueryExecutor.NScannedObjects, sampleSecs)
 		returnVal.RecordMoves = diff(newStat.Metrics.Record.Moves, oldStat.Metrics.Record.Moves, sampleSecs)
+		returnVal.Returned = diff(newStat.Metrics.Document.Returned, oldStat.Metrics.Document.Returned, sampleSecs)
+		returnVal.Inserted = diff(newStat.Metrics.Document.Inserted, oldStat.Metrics.Document.Inserted, sampleSecs)
+		returnVal.Updated = diff(newStat.Metrics.Document.Updated, oldStat.Metrics.Document.Updated, sampleSecs)
+		returnVal.Deleted = diff(newStat.Metrics.Document.Deleted, oldStat.Metrics.Document.Deleted, sampleSecs)
 	}
 
 	returnVal.ThreadCacheUsedPercent = -1
