@@ -279,8 +279,10 @@ var StatHeaders = []StatHeader{
 	{"faults", MMAPOnly},
 	{"glems", AllOnly},
 	{"gleto", AllOnly},
-	{"lr|lw %", MMAPOnly | AllOnly},
-	{"lrt|lwt", MMAPOnly | AllOnly},
+	{"clr|clw %", MMAPOnly | AllOnly},
+	{"clrt|clwt", MMAPOnly | AllOnly},
+	{" olr|olw %", MMAPOnly | AllOnly | Repl},
+	{"olrt|olwt", MMAPOnly | AllOnly | Repl},
 	{"    locked db", Locks},
 	{"qr|qw", Always},
 	{"ar|aw", Always},
@@ -331,7 +333,7 @@ func (slice lockUsages) Swap(i, j int) {
 }
 
 // LockStatus stores a database's lock statistics.
-type CollectionLockStatus struct {
+type AcquisitionLockStatus struct {
 	ReadAcquireWaitsPercentage  float64
 	WriteAcquireWaitsPercentage float64
 	ReadAcquireTimeMicros       int64
@@ -365,7 +367,8 @@ type StatLine struct {
 	Insert, Query, Update, Delete, GetMore, Command int64
 
 	// Collection locks (3.0 mmap only)
-	CollectionLocks *CollectionLockStatus
+	CollectionLocks *AcquisitionLockStatus
+	OplogLocks *AcquisitionLockStatus
 
 	// Cache utilization (wiredtiger only)
 	CacheDirtyPercent float64
@@ -680,6 +683,8 @@ func (glf *GridLineFormatter) FormatLines(lines []StatLine, index int, discover 
 		if lineFlags&MMAPOnly > 0 && lineFlags&AllOnly > 0 {
 			// check if we have any locks
 			if lineFlags&Locks <= 0 {
+
+				// collection lock acquisitions
 				if line.CollectionLocks != nil && !line.IsMongos {
 					percentCell := fmt.Sprintf("%.1f%%|%.1f%%", line.CollectionLocks.ReadAcquireWaitsPercentage,
 						line.CollectionLocks.WriteAcquireWaitsPercentage)
@@ -691,6 +696,22 @@ func (glf *GridLineFormatter) FormatLines(lines []StatLine, index int, discover 
 					//don't write any lock status for mongos nodes
 					glf.Writer.WriteCell("")
 					glf.Writer.WriteCell("")
+				}
+
+				// oplog lock acquisitions
+				if lineFlags&Repl > 0 {
+					if line.OplogLocks != nil && !line.IsMongos {
+						percentCell := fmt.Sprintf("%.1f%%|%.1f%%", line.OplogLocks.ReadAcquireWaitsPercentage,
+							line.OplogLocks.WriteAcquireWaitsPercentage)
+						glf.Writer.WriteCell(percentCell)
+						timeCell := fmt.Sprintf("%v|%v", line.OplogLocks.ReadAcquireTimeMicros,
+							line.OplogLocks.WriteAcquireTimeMicros)
+						glf.Writer.WriteCell(timeCell)
+					} else {
+						//don't write any lock status for mongos nodes
+						glf.Writer.WriteCell("")
+						glf.Writer.WriteCell("")
+					}
 				}
 			} else {
 				// no locks
@@ -869,7 +890,24 @@ func NewStatLine(oldStat, newStat ServerStatus, key string, all bool, sampleSecs
 				writeTotalCountDiff := newStat.Locks["Collection"].AcquireCount.Write - oldStat.Locks["Collection"].AcquireCount.Write
 				readAcquireTimeDiff := newStat.Locks["Collection"].TimeAcquiringMicros.Read - oldStat.Locks["Collection"].TimeAcquiringMicros.Read
 				writeAcquireTimeDiff := newStat.Locks["Collection"].TimeAcquiringMicros.Write - oldStat.Locks["Collection"].TimeAcquiringMicros.Write
-				returnVal.CollectionLocks = &CollectionLockStatus{
+				returnVal.CollectionLocks = &AcquisitionLockStatus{
+					ReadAcquireWaitsPercentage:  percentageInt64(readWaitCountDiff, readTotalCountDiff),
+					WriteAcquireWaitsPercentage: percentageInt64(writeWaitCountDiff, writeTotalCountDiff),
+					ReadAcquireTimeMicros:       averageInt64(readAcquireTimeDiff, readWaitCountDiff),
+					WriteAcquireTimeMicros:      averageInt64(writeAcquireTimeDiff, writeWaitCountDiff),
+				}
+			}
+
+			// Check if it's a 3.0+ MMAP server so we can still compute collection locks
+			oplogCheck, hasOplog := oldStat.Locks["oplog"]
+			if hasOplog && oplogCheck.AcquireWaitCount != nil {
+				readWaitCountDiff := newStat.Locks["oplog"].AcquireWaitCount.Read - oldStat.Locks["oplog"].AcquireWaitCount.Read
+				readTotalCountDiff := newStat.Locks["oplog"].AcquireCount.Read - oldStat.Locks["oplog"].AcquireCount.Read
+				writeWaitCountDiff := newStat.Locks["oplog"].AcquireWaitCount.WriteLower - oldStat.Locks["oplog"].AcquireWaitCount.WriteLower
+				writeTotalCountDiff := newStat.Locks["oplog"].AcquireCount.WriteLower - oldStat.Locks["oplog"].AcquireCount.WriteLower
+				readAcquireTimeDiff := newStat.Locks["oplog"].TimeAcquiringMicros.Read - oldStat.Locks["oplog"].TimeAcquiringMicros.Read
+				writeAcquireTimeDiff := newStat.Locks["oplog"].TimeAcquiringMicros.WriteLower - oldStat.Locks["oplog"].TimeAcquiringMicros.WriteLower
+				returnVal.OplogLocks = &AcquisitionLockStatus{
 					ReadAcquireWaitsPercentage:  percentageInt64(readWaitCountDiff, readTotalCountDiff),
 					WriteAcquireWaitsPercentage: percentageInt64(writeWaitCountDiff, writeTotalCountDiff),
 					ReadAcquireTimeMicros:       averageInt64(readAcquireTimeDiff, readWaitCountDiff),
