@@ -63,7 +63,7 @@ func main() {
 		os.Exit(util.ExitBadOptions)
 	}
 	if outputOpts.ListCount < 0 {
-		log.Logf(log.Always, "invalid value for --listcount: %v", outputOpts.ListCount)
+		log.Logvf(log.Always, "invalid value for --listcount: %v", outputOpts.ListCount)
 		os.Exit(util.ExitBadOptions)
 	}
 
@@ -101,7 +101,7 @@ func main() {
 
 	session, err := sessionProvider.GetSession()
 	if err != nil {
-		log.Logf(log.Always, "Failed: %v", err)
+		log.Logvf(log.Always, "Failed: %v", err)
 		os.Exit(util.ExitError)
 	}
 	defer session.Close()
@@ -110,13 +110,13 @@ func main() {
 		System map[string]interface{} `bson:"system"`
 	}{}
 	if err := session.DB("admin").Run("hostInfo", &hostInfoDoc); err != nil {
-		log.Logf(log.Always, "Failed: %v", err)
+		log.Logvf(log.Always, "Failed: %v", err)
 		os.Exit(util.ExitError)
 	}
 
 	numCores, ok := hostInfoDoc.System["numCores"].(int)
 	if !ok {
-		log.Logf(log.Always, "Unexpected hostInfo structure: %#v", hostInfoDoc)
+		log.Logvf(log.Always, "Unexpected hostInfo structure: %#v", hostInfoDoc)
 		os.Exit(util.ExitError)
 	}
 
