@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/mongodb/mongo-tools/common/text"
+	"math"
 	"sort"
 	"time"
 )
@@ -20,6 +21,7 @@ type FormattableDiff interface {
 
 // ServerStatus represents the results of the "serverStatus" command.
 type ServerStatus struct {
+	time  time.Time
 	Locks map[string]LockStats `bson:"locks,omitempty"`
 }
 
@@ -40,6 +42,8 @@ type ReadWriteLockTimes struct {
 
 // ServerStatusDiff contains a map of the lock time differences for each database.
 type ServerStatusDiff struct {
+	currentServerStatus *ServerStatus
+	listCount           int
 	// namespace -> lock times
 	Totals map[string]LockDelta `json:"totals"`
 	Time   time.Time            `json:"time"`
@@ -53,6 +57,11 @@ type LockDelta struct {
 
 // TopDiff contains a map of the differences between top samples for each namespace.
 type TopDiff struct {
+	numCores   int
+	elapsed    time.Duration
+	currentTop *Top
+	listCount  int
+	sortLatency bool
 	// namespace -> totals
 	Totals map[string]NSTopInfo `json:"totals"`
 	Time   time.Time            `json:"time"`
@@ -60,6 +69,8 @@ type TopDiff struct {
 
 // Top holds raw output of the "top" command.
 type Top struct {
+	numCores int
+	time   time.Time
 	Totals map[string]NSTopInfo `bson:"totals"`
 }
 
@@ -78,15 +89,28 @@ type TopField struct {
 
 // struct to enable sorting of namespaces by lock time with the sort package
 type sortableTotal struct {
-	Name  string
-	Total int64
+	Name    string
+	Total   float64
+	Current int64
 }
 
 type sortableTotals []sortableTotal
 
 func (a sortableTotals) Less(i, j int) bool {
+	if !math.IsNaN(a[i].Total) && math.IsNaN(a[j].Total) {
+		return false
+	} else if math.IsNaN(a[i].Total) && !math.IsNaN(a[j].Total) {
+		return true
+	} else if math.IsNaN(a[i].Total) || math.IsNaN(a[j].Total) {
+		return true
+	}
+
 	if a[i].Total == a[j].Total {
-		return a[i].Name > a[j].Name
+		if a[i].Current == a[j].Current {
+			return a[i].Name > a[j].Name
+		} else {
+			return a[i].Current < a[j].Current
+		}
 	}
 	return a[i].Total < a[j].Total
 }
@@ -95,11 +119,16 @@ func (a sortableTotals) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
 // Diff takes an older Top sample, and produces a TopDiff
 // representing the deltas of each metric between the two samples.
-func (top Top) Diff(previous Top) TopDiff {
+func (top Top) Diff(previous Top, listCount int, sortLatency bool) TopDiff {
 	// The diff to eventually return
 	diff := TopDiff{
-		Totals: map[string]NSTopInfo{},
-		Time:   time.Now(),
+		numCores:   previous.numCores,
+		elapsed:    top.time.Sub(previous.time),
+		currentTop: &top,
+		listCount:  listCount,
+		sortLatency: sortLatency,
+		Totals:     map[string]NSTopInfo{},
+		Time:       time.Now(),
 	}
 
 	// For each namespace we are tracking, subtract the times and counts
@@ -129,27 +158,49 @@ func (top Top) Diff(previous Top) TopDiff {
 
 // Grid returns a tabular representation of the TopDiff.
 func (td TopDiff) Grid() string {
-	buf := &bytes.Buffer{}
-	out := &text.GridWriter{ColumnPadding: 4}
-	out.WriteCells("ns", "total", "read", "write", time.Now().Format("2006-01-02T15:04:05Z07:00"))
-	out.EndRow()
-
-	//Sort by total time
-	totals := make(sortableTotals, 0, len(td.Totals))
-	for ns, diff := range td.Totals {
-		totals = append(totals, sortableTotal{ns, int64(diff.Total.Time)})
+	listCount := td.listCount
+	if listCount == 0 {
+		listCount = 9
 	}
 
+	buf := &bytes.Buffer{}
+	out := &text.GridWriter{ColumnPadding: 4}
+	out.WriteCells("                                              ns", "||TOTAL||", "total %", "total %/core", "time/op", "op/s", "||READ||", "read %", "time/op", "op/s", "||WRITE||", "write %", "time/op", "op/s", time.Now().Format("2006-01-02T15:04:05Z07:00"))
+	out.EndRow()
+
+	totals := make(sortableTotals, 0, len(td.Totals))
+	for ns, diff := range td.Totals {
+		if td.sortLatency {
+			//Sort by total latency (ms/op)
+			totals = append(totals, sortableTotal{ns, float64(diff.Total.Time)/float64(diff.Total.Count), int64(td.currentTop.Totals[ns].Total.Time)})
+		} else {
+			//Sort by total time
+			totals = append(totals, sortableTotal{ns, float64(diff.Total.Time), int64(td.currentTop.Totals[ns].Total.Time)})
+		}
+	}
+
+	elapsedMillis := float64(int64(td.elapsed)/1e6)
+	elapsedSeconds := float64(int64(td.elapsed)/1e9)
 	sort.Sort(sort.Reverse(totals))
 	for i, st := range totals {
 		diff := td.Totals[st.Name]
 		out.WriteCells(st.Name,
 			fmt.Sprintf("%vms", diff.Total.Time),
+			fmt.Sprintf("%0.1f%%", float64(diff.Total.Time)/elapsedMillis*100),
+			fmt.Sprintf("%0.2f%%", float64(diff.Total.Time)/elapsedMillis*100/float64(td.numCores)),
+			fmt.Sprintf("%0.1fms/op", float64(diff.Total.Time)/float64(diff.Total.Count)),
+			fmt.Sprintf("%0.1fop/s", float64(diff.Total.Count)/elapsedSeconds),
 			fmt.Sprintf("%vms", diff.Read.Time),
+			fmt.Sprintf("%0.1f%%", float64(diff.Read.Time)/elapsedMillis*100),
+			fmt.Sprintf("%0.1fms/op", float64(diff.Read.Time)/float64(diff.Read.Count)),
+			fmt.Sprintf("%0.1fop/s", float64(diff.Read.Count)/elapsedSeconds),
 			fmt.Sprintf("%vms", diff.Write.Time),
+			fmt.Sprintf("%0.1f%%", float64(diff.Write.Time)/elapsedMillis*100),
+			fmt.Sprintf("%0.1fms/op", float64(diff.Write.Time)/float64(diff.Write.Count)),
+			fmt.Sprintf("%0.1fop/s", float64(diff.Write.Count)/elapsedSeconds),
 			"")
 		out.EndRow()
-		if i >= 9 {
+		if i >= listCount - 1 {
 			break
 		}
 	}
@@ -177,6 +228,11 @@ func (ssd ServerStatusDiff) JSON() string {
 
 // Grid returns a tabular representation of the ServerStatusDiff.
 func (ssd ServerStatusDiff) Grid() string {
+	listCount := ssd.listCount
+	if listCount == 0 {
+		listCount = 9
+	}
+
 	buf := &bytes.Buffer{}
 	out := &text.GridWriter{ColumnPadding: 4}
 	out.WriteCells("db", "total", "read", "write", time.Now().Format("2006-01-02T15:04:05Z07:00"))
@@ -185,7 +241,9 @@ func (ssd ServerStatusDiff) Grid() string {
 	//Sort by total time
 	totals := make(sortableTotals, 0, len(ssd.Totals))
 	for ns, diff := range ssd.Totals {
-		totals = append(totals, sortableTotal{ns, diff.Read + diff.Write})
+		lockStats := ssd.currentServerStatus.Locks[ns]
+		currentTotal := lockStats.TimeLockedMicros.ReadLower + lockStats.TimeLockedMicros.WriteLower
+		totals = append(totals, sortableTotal{ns, float64(diff.Read + diff.Write), currentTotal})
 	}
 
 	sort.Sort(sort.Reverse(totals))
@@ -197,7 +255,7 @@ func (ssd ServerStatusDiff) Grid() string {
 			fmt.Sprintf("%vms", diff.Write),
 			"")
 		out.EndRow()
-		if i >= 9 {
+		if i >= listCount - 1 {
 			break
 		}
 	}
@@ -208,11 +266,13 @@ func (ssd ServerStatusDiff) Grid() string {
 
 // Diff takes an older ServerStatus sample, and produces a ServerStatusDiff
 // representing the deltas of each metric between the two samples.
-func (ss ServerStatus) Diff(previous ServerStatus) ServerStatusDiff {
+func (ss ServerStatus) Diff(previous ServerStatus, listCount int) ServerStatusDiff {
 	// the diff to eventually return
 	diff := ServerStatusDiff{
-		Totals: map[string]LockDelta{},
-		Time:   time.Now(),
+		currentServerStatus: &ss,
+		listCount:           listCount,
+		Totals:              map[string]LockDelta{},
+		Time:                time.Now(),
 	}
 
 	prevLocks := previous.Locks

@@ -13,6 +13,7 @@ setgopath() {
 		mkdir -p .gopath/src/"$(dirname "${TOOLS_PKG}")"
 		ln -sf `pwd` .gopath/src/$TOOLS_PKG
 		export GOPATH=`pwd`/.gopath:`pwd`/vendor
+		echo export GOPATH=`pwd`/.gopath:`pwd`/vendor
 	else
 		local SOURCE_GOPATH=`pwd`/.gopath
 		local VENDOR_GOPATH=`pwd`/vendor

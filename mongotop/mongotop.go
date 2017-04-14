@@ -12,6 +12,9 @@ import (
 // MongoTop is a container for the user-specified options and
 // internal state used for running mongotop.
 type MongoTop struct {
+	// For busy %
+	NumCores int
+
 	// Generic mongo tool options
 	Options *options.ToolOptions
 
@@ -36,6 +39,7 @@ func (mt *MongoTop) runDiff() (outDiff FormattableDiff, err error) {
 	defer session.Close()
 	session.SetSocketTimeout(0)
 
+	now := time.Now()
 	var currentServerStatus ServerStatus
 	var currentTop Top
 	commandName := "top"
@@ -50,6 +54,10 @@ func (mt *MongoTop) runDiff() (outDiff FormattableDiff, err error) {
 		mt.previousTop = nil
 		return nil, err
 	}
+	currentTop.time = now
+	currentTop.numCores = mt.NumCores
+	currentServerStatus.time = now
+
 	if mt.OutputOptions.Locks {
 		if currentServerStatus.Locks == nil {
 			return nil, fmt.Errorf("server does not support reporting lock information")
@@ -60,13 +68,13 @@ func (mt *MongoTop) runDiff() (outDiff FormattableDiff, err error) {
 			}
 		}
 		if mt.previousServerStatus != nil {
-			serverStatusDiff := currentServerStatus.Diff(*mt.previousServerStatus)
+			serverStatusDiff := currentServerStatus.Diff(*mt.previousServerStatus, mt.OutputOptions.ListCount)
 			outDiff = serverStatusDiff
 		}
 		mt.previousServerStatus = &currentServerStatus
 	} else {
 		if mt.previousTop != nil {
-			topDiff := currentTop.Diff(*mt.previousTop)
+			topDiff := currentTop.Diff(*mt.previousTop, mt.OutputOptions.ListCount, mt.OutputOptions.SortLatency)
 			outDiff = topDiff
 		}
 		mt.previousTop = &currentTop
