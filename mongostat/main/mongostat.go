@@ -74,7 +74,7 @@ func main() {
 	log.SetVerbosity(opts.Verbosity)
 	signals.Handle()
 
-	sleepInterval := 1
+	sleepInterval := 1000
 	if len(args) > 0 {
 		if len(args) != 1 {
 			log.Logvf(log.Always, "too many positional arguments: %v", args)
@@ -86,8 +86,8 @@ func main() {
 			log.Logvf(log.Always, "invalid sleep interval: %v", args[0])
 			os.Exit(util.ExitBadOptions)
 		}
-		if sleepInterval < 1 {
-			log.Logvf(log.Always, "sleep interval must be at least 1 second")
+		if sleepInterval < 10 {
+			log.Logvf(log.Always, "sleep interval must be at least 10 milliseconds")
 			os.Exit(util.ExitBadOptions)
 		}
 	}
@@ -219,7 +219,7 @@ func main() {
 		StatOptions:   statOpts,
 		Nodes:         map[string]*mongostat.NodeMonitor{},
 		Discovered:    discoverChan,
-		SleepInterval: time.Duration(sleepInterval) * time.Second,
+		SleepInterval: time.Duration(sleepInterval) * time.Millisecond,
 		Cluster:       cluster,
 	}
 

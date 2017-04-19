@@ -20,9 +20,11 @@ type ServerStatus struct {
 	Dur                *DurStats              `bson:"dur"`
 	GlobalLock         *GlobalLockStats       `bson:"globalLock"`
 	Locks              map[string]LockStats   `bson:"locks,omitempty"`
+	Metrics            *Metrics               `bson:"metrics"`
 	Network            *NetworkStats          `bson:"network"`
 	Opcounters         *OpcountStats          `bson:"opcounters"`
 	OpcountersRepl     *OpcountStats          `bson:"opcountersRepl"`
+	OpLatencies        *OpLatencies           `bson:"opLatencies"`
 	RecordStats        *DBRecordStats         `bson:"recordStats"`
 	Mem                *MemStats              `bson:"mem"`
 	Repl               *ReplStatus            `bson:"repl"`
@@ -193,6 +195,58 @@ type LockStats struct {
 // ExtraInfo stores additional platform specific information.
 type ExtraInfo struct {
 	PageFaults *int64 `bson:"page_faults"`
+}
+
+type Metrics struct {
+	Document      Document      `bson:"document"`
+	GetLastError  GetLastError  `bson:"getLastError"`
+	Operation     Operation     `bson:"operation"`
+	QueryExecutor QueryExecutor `bson:"queryExecutor"`
+	Record        Record        `bson:"record"`
+}
+
+type Document struct {
+	Returned	int64	`bson:"returned"`
+	Inserted	int64	`bson:"inserted"`
+	Updated		int64	`bson:"updated"`
+	Deleted		int64	`bson:"deleted"`
+}
+
+type GetLastError struct {
+	Wtime     GLETime `bson:"wtime"`
+	Wtimeouts int64   `bson:"wtimeouts"`
+}
+
+type GLETime struct {
+	Num         int64 `bson:"num"`
+	TotalMillis int64 `bson:"totalMillis"`
+}
+
+type Operation struct {
+	FastMod        int64 `bson:"fastmod"`
+	IdHack         int64 `bson:"idhack"`
+	ScanAndOrder   int64 `bson:"scanAndOrder"`
+	WriteConflicts int64 `bson:"writeConflicts"`
+}
+
+type QueryExecutor struct {
+	NScanned        int64 `bson:"scanned"`
+	NScannedObjects int64 `bson:"scannedObjects"`
+}
+
+type Record struct {
+	Moves int64 `bson:"moves"`
+}
+
+type OpLatencies struct {
+	Reads    OpLatencyStats `bson:"reads"`
+	Writes   OpLatencyStats `bson:"writes"`
+	Commands OpLatencyStats `bson:"commands"`
+}
+
+type OpLatencyStats struct {
+	Micros int64 `bson:"latency"`
+	Ops    int64 `bson:"ops"`
 }
 
 // NodeError pairs an error with a hostname

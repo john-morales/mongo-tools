@@ -8,6 +8,7 @@ import (
 
 	"github.com/mongodb/mongo-tools/common/text"
 	"github.com/mongodb/mongo-tools/common/util"
+	"math"
 )
 
 type ReaderConfig struct {
@@ -73,6 +74,13 @@ func averageInt64(value, outOf int64) int64 {
 		return 0
 	}
 	return value / outOf
+}
+
+func averageFloat64(value, outOf int64) float64 {
+	if value == 0.0 || outOf == 0.0 {
+		return 0.0
+	}
+	return float64(value) / float64(outOf)
 }
 
 func parseLocks(stat *ServerStatus) map[string]LockUsage {
@@ -152,6 +160,18 @@ func IsMongos(stat *ServerStatus) bool {
 
 func HasLocks(stat *ServerStatus) bool {
 	return ReadLockedDB(nil, stat, stat) != ""
+}
+
+func HasCollectionLocks(stat *ServerStatus) bool {
+	return ReadLRW(nil, stat, stat) != ""
+}
+
+func HasMetrics(stat *ServerStatus) bool {
+	return ReadScanAndOrders(nil, stat, stat) != ""
+}
+
+func HasOpLatencies(stat *ServerStatus) bool {
+	return ReadOpLatencies(nil, stat, stat) != ""
 }
 
 func IsReplSet(stat *ServerStatus) (res bool) {
@@ -371,6 +391,130 @@ func ReadLockedDB(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val string) 
 				val = fmt.Sprintf("%s:%s%%", db, percentage)
 			}
 		}
+	}
+	return
+}
+
+func ReadScanAndOrders(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if newStat.Metrics != nil && oldStat.Metrics != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		val = fmt.Sprintf("%d", diff(newStat.Metrics.Operation.ScanAndOrder, oldStat.Metrics.Operation.ScanAndOrder, sampleSecs))
+	}
+	return
+}
+
+func ReadWriteConflicts(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if newStat.Metrics != nil && oldStat.Metrics != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		val = fmt.Sprintf("%d", diff(newStat.Metrics.Operation.WriteConflicts, oldStat.Metrics.Operation.WriteConflicts, sampleSecs))
+	}
+	return
+}
+
+func ReadNScanned(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if newStat.Metrics != nil && oldStat.Metrics != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		val = fmt.Sprintf("%d", diff(newStat.Metrics.QueryExecutor.NScanned, oldStat.Metrics.QueryExecutor.NScanned, sampleSecs))
+	}
+	return
+}
+
+func ReadNScannedObjects(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if newStat.Metrics != nil && oldStat.Metrics != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		val = fmt.Sprintf("%d", diff(newStat.Metrics.QueryExecutor.NScannedObjects, oldStat.Metrics.QueryExecutor.NScannedObjects, sampleSecs))
+	}
+	return
+}
+
+func ReadQueryEfficiency(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if newStat.Metrics != nil && oldStat.Metrics != nil {
+		maxScanned := math.Max(
+			float64(newStat.Metrics.QueryExecutor.NScanned - oldStat.Metrics.QueryExecutor.NScanned),
+			float64(newStat.Metrics.QueryExecutor.NScannedObjects - oldStat.Metrics.QueryExecutor.NScannedObjects))
+		nreturned := float64(newStat.Metrics.Document.Returned - oldStat.Metrics.Document.Returned)
+
+		ratio := 0.0
+		if nreturned > 0 {
+			ratio = maxScanned / nreturned
+		}
+
+		val = fmt.Sprintf("%.1f", ratio)
+	}
+	return
+}
+
+func ReadDocumentStats(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if newStat.Metrics != nil && oldStat.Metrics != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+
+		val = fmt.Sprintf("%v|%v|%v|%v",
+			diff(newStat.Metrics.Document.Returned, oldStat.Metrics.Document.Returned, sampleSecs),
+			diff(newStat.Metrics.Document.Inserted, oldStat.Metrics.Document.Inserted, sampleSecs),
+			diff(newStat.Metrics.Document.Updated, oldStat.Metrics.Document.Updated, sampleSecs),
+			diff(newStat.Metrics.Document.Deleted, oldStat.Metrics.Document.Deleted, sampleSecs))
+	}
+	return
+}
+
+func ReadMoves(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if newStat.Metrics != nil && oldStat.Metrics != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		val = fmt.Sprintf("%d", diff(newStat.Metrics.Record.Moves, oldStat.Metrics.Record.Moves, sampleSecs))
+	}
+	return
+}
+
+func ReadGLETimeouts(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if newStat.Metrics != nil && oldStat.Metrics != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		val = fmt.Sprintf("%d", diff(newStat.Metrics.GetLastError.Wtimeouts, oldStat.Metrics.GetLastError.Wtimeouts, sampleSecs))
+	}
+	return
+}
+
+func ReadGLEMillis(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if newStat.Metrics != nil && oldStat.Metrics != nil {
+		numDiff := newStat.Metrics.GetLastError.Wtime.Num - oldStat.Metrics.GetLastError.Wtime.Num
+		millisDiff := newStat.Metrics.GetLastError.Wtime.TotalMillis - oldStat.Metrics.GetLastError.Wtime.TotalMillis
+		val = fmt.Sprintf("%d", averageInt64(millisDiff, numDiff))
+	}
+	return
+}
+
+func ReadOpLatencies(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if newStat.OpLatencies != nil && oldStat.OpLatencies != nil {
+		readOpsDiff := newStat.OpLatencies.Reads.Ops - oldStat.OpLatencies.Reads.Ops
+		readMicrosDiff := newStat.OpLatencies.Reads.Micros - oldStat.OpLatencies.Reads.Micros
+
+		writeOpsDiff := newStat.OpLatencies.Writes.Ops - oldStat.OpLatencies.Writes.Ops
+		writeMicrosDiff := newStat.OpLatencies.Writes.Micros - oldStat.OpLatencies.Writes.Micros
+
+		commandOpsDiff := newStat.OpLatencies.Commands.Ops - oldStat.OpLatencies.Commands.Ops
+		commandMicrosDiff := newStat.OpLatencies.Commands.Micros - oldStat.OpLatencies.Commands.Micros
+
+		// average time (scaled from micros to millis) per operation of each type, read|write|command
+		val = fmt.Sprintf("%d|%d|%d",
+			averageInt64(readMicrosDiff, readOpsDiff) / 1000,
+			averageInt64(writeMicrosDiff, writeOpsDiff) / 1000,
+			averageInt64(commandMicrosDiff, commandOpsDiff) / 1000)
+	}
+	return
+}
+
+func ReadOpLatencyUtilPercent(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if newStat.OpLatencies != nil && oldStat.OpLatencies != nil {
+		sampleMicros := newStat.SampleTime.Sub(oldStat.SampleTime).Nanoseconds() / 1000
+
+		readMicrosDiff := newStat.OpLatencies.Reads.Micros - oldStat.OpLatencies.Reads.Micros
+		writeMicrosDiff := newStat.OpLatencies.Writes.Micros - oldStat.OpLatencies.Writes.Micros
+		commandMicrosDiff := newStat.OpLatencies.Commands.Micros - oldStat.OpLatencies.Commands.Micros
+
+		// utilization percent
+		val = fmt.Sprintf("%.1f|%.1f|%.1f",
+			percentageInt64(readMicrosDiff, sampleMicros),
+			percentageInt64(writeMicrosDiff, sampleMicros),
+			percentageInt64(commandMicrosDiff, sampleMicros))
 	}
 	return
 }

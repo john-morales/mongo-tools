@@ -61,6 +61,15 @@ func (sc *StatConsumer) Update(newStat *status.ServerStatus) (l *line.StatLine, 
 		if status.HasLocks(newStat) {
 			sc.flags |= line.FlagLocks
 		}
+		if status.HasCollectionLocks(newStat) {
+			sc.flags |= line.FlagCollectionLocks
+		}
+		if status.HasMetrics(newStat) {
+			sc.flags |= line.FlagMetrics
+		}
+		if status.HasOpLatencies(newStat) {
+			sc.flags |= line.FlagOpLatencies
+		}
 
 		// Modify headers
 		sc.headers = []string{}

@@ -9,8 +9,11 @@ const (
 	FlagAlways   = 1 << iota // always activate the column
 	FlagHosts                // only active if we may have multiple hosts
 	FlagDiscover             // only active when mongostat is in discover mode
+	FlagMetrics              // only active if node supports metrics
 	FlagRepl                 // only active if one of the nodes being monitored is in a replset
 	FlagLocks                // only active if node is capable of calculating lock info
+	FlagCollectionLocks      // only active if node is capable of calculating collection lock info
+	FlagOpLatencies          // only active if node is capable of calculating op latencies
 	FlagAll                  // only active if mongostat was run with --all option
 	FlagMMAP                 // only active if node has mmap-specific fields
 	FlagWT                   // only active if node has wiredtiger-specific fields
@@ -46,6 +49,19 @@ var (
 		"lrw":            {"lrw", "Lock acquire count, read|write (diff percentage)", "lr|lw %"},
 		"lrwt":           {"lrwt", "Lock acquire time, read|write (diff percentage)", "lrt|lwt"},
 		"locked_db":      {"locked_db", "Locked db info, '(db):(percentage)'", "locked"},
+
+		"sao":            {"sao", "Scan and Order (diff)", "sao"},
+		"wc":             {"wc", "Write Conflicts (diff)", "wc"},
+		"ns":             {"ns", "NScanned (diff)", "ns"},
+		"nso":            {"nso", "NScanned Objects (diff)", "nso"},
+		"effic":          {"effic", "Query Efficiency: max(nscanned, nscannedObjects)/nreturned (ratio)", "effic"},
+		"r|i|u|d":        {"r|i|u|d", "Document metrics Returned|Inserted|Updated|Deleted (diff)", "r|i|u|d"},
+		"moves":          {"moves", "Document moves (diff)", "moves"},
+		"gleto":          {"gleto", "Get Last Error timeouts (diff)", "gleto"},
+		"glems":          {"glems", "Average time waiting for GLE (millis)", "glems"},
+		"r|w|c":          {"r|w|c", "Average execution time per read/write/command (millis)", "r|w|c"},
+		"r%|w%|c%":       {"r%|w%|c%", "Average utilization percent per read/write/command (diff percentage)", "r%|w%|c%"},
+
 		"qrw":            {"qrw", "Queued accesses, read|write", "qr|qw"},
 		"arw":            {"arw", "Active accesses, read|write", "ar|aw"},
 		"net_in":         {"net_in", "Network input (size)", "netIn"},
@@ -75,6 +91,19 @@ var (
 		"lrw":            {status.ReadLRW},
 		"lrwt":           {status.ReadLRWT},
 		"locked_db":      {status.ReadLockedDB},
+
+		"sao":       	  {status.ReadScanAndOrders},
+		"wc":       	  {status.ReadWriteConflicts},
+		"ns":       	  {status.ReadNScanned},
+		"nso":       	  {status.ReadNScannedObjects},
+		"effic":       	  {status.ReadQueryEfficiency},
+		"r|i|u|d":        {status.ReadDocumentStats},
+		"moves":          {status.ReadMoves},
+		"gleto":          {status.ReadGLETimeouts},
+		"glems":          {status.ReadGLEMillis},
+		"r|w|c":          {status.ReadOpLatencies},
+		"r%|w%|c%":       {status.ReadOpLatencyUtilPercent},
+
 		"qrw":            {status.ReadQRW},
 		"arw":            {status.ReadARW},
 		"net_in":         {status.ReadNetIn},
@@ -103,9 +132,22 @@ var (
 		{"res", FlagAlways},
 		{"nonmapped", FlagMMAP | FlagAll},
 		{"faults", FlagMMAP},
-		{"lrw", FlagMMAP | FlagAll},
-		{"lrwt", FlagMMAP | FlagAll},
+		{"lrw", FlagMMAP | FlagCollectionLocks | FlagAll},
+		{"lrwt", FlagMMAP | FlagCollectionLocks | FlagAll},
 		{"locked_db", FlagLocks},
+
+		{"sao", FlagMetrics | FlagAll},
+		{"wc", FlagMetrics | FlagAll},
+		{"ns", FlagMetrics | FlagAll},
+		{"nso", FlagMetrics | FlagAll},
+		{"effic", FlagMetrics | FlagAll},
+		{"r|i|u|d", FlagMetrics | FlagAll},
+		{"moves", FlagMetrics | FlagMMAP | FlagAll},
+		{"gleto", FlagMetrics | FlagAll},
+		{"glems", FlagMetrics | FlagAll},
+		{"r|w|c", FlagOpLatencies},
+		{"r%|w%|c%", FlagOpLatencies},
+
 		{"qrw", FlagAlways},
 		{"arw", FlagAlways},
 		{"net_in", FlagAlways},
