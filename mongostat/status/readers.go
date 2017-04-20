@@ -12,6 +12,7 @@ import (
 )
 
 type ReaderConfig struct {
+	CpuCount      int64
 	HumanReadable bool
 	TimeFormat    string
 }
@@ -502,16 +503,16 @@ func ReadOpLatencies(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val strin
 	return
 }
 
-func ReadOpLatencyUtilPercent(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+func ReadOpLatencyUtilPercent(c *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
 	if newStat.OpLatencies != nil && oldStat.OpLatencies != nil {
 		sampleMicros := newStat.SampleTime.Sub(oldStat.SampleTime).Nanoseconds() / 1000
 
-		readMicrosDiff := newStat.OpLatencies.Reads.Micros - oldStat.OpLatencies.Reads.Micros
-		writeMicrosDiff := newStat.OpLatencies.Writes.Micros - oldStat.OpLatencies.Writes.Micros
-		commandMicrosDiff := newStat.OpLatencies.Commands.Micros - oldStat.OpLatencies.Commands.Micros
+		readMicrosDiff := (newStat.OpLatencies.Reads.Micros - oldStat.OpLatencies.Reads.Micros) / c.CpuCount
+		writeMicrosDiff := (newStat.OpLatencies.Writes.Micros - oldStat.OpLatencies.Writes.Micros) / c.CpuCount
+		commandMicrosDiff := (newStat.OpLatencies.Commands.Micros - oldStat.OpLatencies.Commands.Micros) / c.CpuCount
 
 		// utilization percent
-		val = fmt.Sprintf("%.1f|%.1f|%.1f",
+		val = fmt.Sprintf("%.1f%%|%.1f%%|%.1f%%",
 			percentageInt64(readMicrosDiff, sampleMicros),
 			percentageInt64(writeMicrosDiff, sampleMicros),
 			percentageInt64(commandMicrosDiff, sampleMicros))

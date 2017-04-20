@@ -127,6 +127,11 @@ func main() {
 		os.Exit(util.ExitBadOptions)
 	}
 
+	if statOpts.CpuCount <= 0 {
+		log.Logvf(log.Always, "--cpus must be positive number of CPUs")
+		os.Exit(util.ExitBadOptions)
+	}
+
 	// we have to check this here, otherwise the user will be prompted
 	// for a password for each discovered node
 	if opts.Auth.ShouldAskForPassword() {
@@ -181,12 +186,14 @@ func main() {
 	}
 
 	readerConfig := &status.ReaderConfig{
+		CpuCount: statOpts.CpuCount,
 		HumanReadable: statOpts.HumanReadable == "true",
 	}
 	if statOpts.Json {
 		readerConfig.TimeFormat = "15:04:05"
 	}
 
+	log.Logvf(log.Always, "Starting with reader config %+v", readerConfig)
 	consumer := stat_consumer.NewStatConsumer(cliFlags, customHeaders,
 		keyNames, readerConfig, formatter, os.Stdout)
 	seedHosts := util.CreateConnectionAddrs(opts.Host, opts.Port)
