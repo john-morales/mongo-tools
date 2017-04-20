@@ -433,14 +433,9 @@ func ReadQueryEfficiency(_ *ReaderConfig, newStat, oldStat *ServerStatus) (val s
 		maxScanned := math.Max(
 			float64(newStat.Metrics.QueryExecutor.NScanned - oldStat.Metrics.QueryExecutor.NScanned),
 			float64(newStat.Metrics.QueryExecutor.NScannedObjects - oldStat.Metrics.QueryExecutor.NScannedObjects))
-		nreturned := float64(newStat.Metrics.Document.Returned - oldStat.Metrics.Document.Returned)
+		nreturned := math.Max(float64(newStat.Metrics.Document.Returned - oldStat.Metrics.Document.Returned), 1.0)
 
-		ratio := 0.0
-		if nreturned > 0 {
-			ratio = maxScanned / nreturned
-		}
-
-		val = fmt.Sprintf("%.1f", ratio)
+		val = fmt.Sprintf("%.1f", maxScanned / nreturned)
 	}
 	return
 }
