@@ -44,6 +44,13 @@ func formatBits(should bool, amt int64) string {
 	return fmt.Sprintf("%v", amt)
 }
 
+func formatByteAmount(should bool, amt int64) string {
+	if should {
+		return text.FormatByteAmount(amt)
+	}
+	return fmt.Sprintf("%v", amt)
+}
+
 func formatMegabyteAmount(should bool, amt int64) string {
 	if should {
 		return text.FormatMegabyteAmount(amt)
@@ -258,6 +265,106 @@ func ReadUsed(c *ReaderConfig, newStat, _ *ServerStatus) (val string) {
 				val = val + "%"
 			}
 		}
+	}
+	return
+}
+
+func ReadCacheBytesReadInto(c *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if oldStat.WiredTiger != nil && newStat.WiredTiger != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		diff := diff(newStat.WiredTiger.Cache.BytesReadIntoCache, oldStat.WiredTiger.Cache.BytesReadIntoCache, sampleSecs)
+		val = formatByteAmount(c.HumanReadable, diff)
+	}
+	return
+}
+
+func ReadCacheBytesWrittenFrom(c *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if oldStat.WiredTiger != nil && newStat.WiredTiger != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		diff := diff(newStat.WiredTiger.Cache.BytesWrittenFromCache, oldStat.WiredTiger.Cache.BytesWrittenFromCache, sampleSecs)
+		val = formatByteAmount(c.HumanReadable, diff)
+	}
+	return
+}
+
+func ReadCachePagesReadInto(c *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if oldStat.WiredTiger != nil && newStat.WiredTiger != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		val = fmt.Sprintf("%d", diff(newStat.WiredTiger.Cache.PagesReadIntoCache, oldStat.WiredTiger.Cache.PagesReadIntoCache, sampleSecs))
+	}
+	return
+}
+
+func ReadCachePagesRequested(c *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if oldStat.WiredTiger != nil && newStat.WiredTiger != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		val = fmt.Sprintf("%d", diff(newStat.WiredTiger.Cache.PagesRequestedFromCache, oldStat.WiredTiger.Cache.PagesRequestedFromCache, sampleSecs))
+	}
+	return
+}
+
+func ReadCachePagesWrittenFrom(c *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if oldStat.WiredTiger != nil && newStat.WiredTiger != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		val = fmt.Sprintf("%d", diff(newStat.WiredTiger.Cache.PagesWrittenFromCache, oldStat.WiredTiger.Cache.PagesWrittenFromCache, sampleSecs))
+	}
+	return
+}
+
+func ReadCachePageHitRatio(c *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if oldStat.WiredTiger != nil && newStat.WiredTiger != nil {
+		reqDiff := newStat.WiredTiger.Cache.PagesRequestedFromCache - oldStat.WiredTiger.Cache.PagesRequestedFromCache
+		readIntoDiff := newStat.WiredTiger.Cache.PagesReadIntoCache - oldStat.WiredTiger.Cache.PagesReadIntoCache
+		hitRatio := percentageInt64(reqDiff-readIntoDiff, reqDiff)
+
+		val = fmt.Sprintf("%.1f%%", hitRatio)
+	}
+	return
+}
+
+func ReadCachePagesCurrentlyHeldInCache(c *ReaderConfig, newStat, _ *ServerStatus) (val string) {
+	if newStat.WiredTiger != nil {
+		val = fmt.Sprintf("%d", newStat.WiredTiger.Cache.PagesCurrentlyHeldInCache)
+	}
+	return
+}
+
+func ReadEvictedUnmodified(c *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if oldStat.WiredTiger != nil && newStat.WiredTiger != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		val = fmt.Sprintf("%d", diff(newStat.WiredTiger.Cache.UnmodifiedPagesEvicted, oldStat.WiredTiger.Cache.UnmodifiedPagesEvicted, sampleSecs))
+	}
+	return
+}
+
+func ReadEvictedModified(c *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if oldStat.WiredTiger != nil && newStat.WiredTiger != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		val = fmt.Sprintf("%d", diff(newStat.WiredTiger.Cache.ModifiedPagesEvicted, oldStat.WiredTiger.Cache.ModifiedPagesEvicted, sampleSecs))
+	}
+	return
+}
+
+func ReadEvictedInternal(c *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if oldStat.WiredTiger != nil && newStat.WiredTiger != nil {
+		sampleSecs := float64(newStat.SampleTime.Sub(oldStat.SampleTime).Seconds())
+		val = fmt.Sprintf("%d", diff(newStat.WiredTiger.Cache.InternalPagesEvicted, oldStat.WiredTiger.Cache.InternalPagesEvicted, sampleSecs))
+	}
+	return
+}
+
+func ReadCachePercentages(c *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if oldStat.WiredTiger != nil && newStat.WiredTiger != nil {
+		readDiff := newStat.WiredTiger.Cache.PagesReadIntoCache - oldStat.WiredTiger.Cache.PagesReadIntoCache
+		readPercent := percentageInt64(readDiff, newStat.WiredTiger.Cache.PagesCurrentlyHeldInCache)
+		writtenDiff := newStat.WiredTiger.Cache.PagesWrittenFromCache - oldStat.WiredTiger.Cache.PagesWrittenFromCache
+		writtenPercent := percentageInt64(writtenDiff, newStat.WiredTiger.Cache.PagesCurrentlyHeldInCache)
+		modifiedDiff := newStat.WiredTiger.Cache.ModifiedPagesEvicted - oldStat.WiredTiger.Cache.ModifiedPagesEvicted
+		modifiedPercent := percentageInt64(modifiedDiff, newStat.WiredTiger.Cache.PagesCurrentlyHeldInCache)
+		unmodifiedDiff := newStat.WiredTiger.Cache.UnmodifiedPagesEvicted - oldStat.WiredTiger.Cache.UnmodifiedPagesEvicted
+		unmodifiedPercent := percentageInt64(unmodifiedDiff, newStat.WiredTiger.Cache.PagesCurrentlyHeldInCache)
+
+		val = fmt.Sprintf("%.1f%%|%.1f%%|%.1f%%|%.1f%%", readPercent, writtenPercent, modifiedPercent, unmodifiedPercent)
 	}
 	return
 }

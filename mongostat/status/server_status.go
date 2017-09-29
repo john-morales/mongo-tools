@@ -54,6 +54,15 @@ type CacheStats struct {
 	TrackedDirtyBytes  int64 `bson:"tracked dirty bytes in the cache"`
 	CurrentCachedBytes int64 `bson:"bytes currently in the cache"`
 	MaxBytesConfigured int64 `bson:"maximum bytes configured"`
+	BytesReadIntoCache int64 `bson:"bytes read into cache"`
+	BytesWrittenFromCache int64 `bson:"bytes written from cache"`
+	PagesReadIntoCache int64 `bson:"pages read into cache"`
+	PagesRequestedFromCache int64 `bson:"pages requested from the cache"`
+	PagesWrittenFromCache int64 `bson:"pages written from cache"`
+	PagesCurrentlyHeldInCache int64 `bson:"pages currently held in the cache"`
+	ModifiedPagesEvicted int64 `bson:"modified pages evicted"`
+	UnmodifiedPagesEvicted int64 `bson:"unmodified pages evicted"`
+	InternalPagesEvicted int64 `bson:"internal pages evicted"`
 }
 
 // TransactionStats stores transaction checkpoints in WiredTiger.
