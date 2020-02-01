@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongoimport
 
 import (
@@ -6,7 +12,7 @@ import (
 	"io"
 
 	"github.com/mongodb/mongo-tools/mongoimport/csv"
-	"gopkg.in/mgo.v2/bson"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 // CSVInputReader implements the InputReader interface for CSV input types.
@@ -34,34 +40,39 @@ type CSVInputReader struct {
 
 	// ignoreBlanks is whether empty fields should be ignored
 	ignoreBlanks bool
+
+	// useArrayIndexFields is whether field names include array indexes
+	useArrayIndexFields bool
 }
 
 // CSVConverter implements the Converter interface for CSV input.
 type CSVConverter struct {
-	colSpecs     []ColumnSpec
-	data         []string
-	index        uint64
-	ignoreBlanks bool
-	rejectWriter *gocsv.Writer
+	colSpecs            []ColumnSpec
+	data                []string
+	index               uint64
+	ignoreBlanks        bool
+	useArrayIndexFields bool
+	rejectWriter        *gocsv.Writer
 }
 
 // NewCSVInputReader returns a CSVInputReader configured to read data from the
 // given io.Reader, extracting only the specified columns using exactly "numDecoders"
 // goroutines.
-func NewCSVInputReader(colSpecs []ColumnSpec, in io.Reader, rejects io.Writer, numDecoders int, ignoreBlanks bool) *CSVInputReader {
+func NewCSVInputReader(colSpecs []ColumnSpec, in io.Reader, rejects io.Writer, numDecoders int, ignoreBlanks bool, useArrayIndexFields bool) *CSVInputReader {
 	szCount := newSizeTrackingReader(newBomDiscardingReader(in))
 	csvReader := csv.NewReader(szCount)
 	// allow variable number of colSpecs in document
 	csvReader.FieldsPerRecord = -1
 	csvReader.TrimLeadingSpace = true
 	return &CSVInputReader{
-		colSpecs:        colSpecs,
-		csvReader:       csvReader,
-		csvRejectWriter: gocsv.NewWriter(rejects),
-		numProcessed:    uint64(0),
-		numDecoders:     numDecoders,
-		sizeTracker:     szCount,
-		ignoreBlanks:    ignoreBlanks,
+		colSpecs:            colSpecs,
+		csvReader:           csvReader,
+		csvRejectWriter:     gocsv.NewWriter(rejects),
+		numProcessed:        uint64(0),
+		numDecoders:         numDecoders,
+		sizeTracker:         szCount,
+		ignoreBlanks:        ignoreBlanks,
+		useArrayIndexFields: useArrayIndexFields,
 	}
 }
 
@@ -73,7 +84,7 @@ func (r *CSVInputReader) ReadAndValidateHeader() (err error) {
 		return err
 	}
 	r.colSpecs = ParseAutoHeaders(fields)
-	return validateReaderFields(ColumnNames(r.colSpecs))
+	return validateReaderFields(ColumnNames(r.colSpecs), r.useArrayIndexFields)
 }
 
 // ReadAndValidateHeader reads the header from the underlying reader and validates
@@ -87,7 +98,7 @@ func (r *CSVInputReader) ReadAndValidateTypedHeader(parseGrace ParseGrace) (err 
 	if err != nil {
 		return err
 	}
-	return validateReaderFields(ColumnNames(r.colSpecs))
+	return validateReaderFields(ColumnNames(r.colSpecs), r.useArrayIndexFields)
 }
 
 // StreamDocument takes a boolean indicating if the documents should be streamed
@@ -113,11 +124,12 @@ func (r *CSVInputReader) StreamDocument(ordered bool, readDocs chan bson.D) (ret
 				return
 			}
 			csvRecordChan <- CSVConverter{
-				colSpecs:     r.colSpecs,
-				data:         r.csvRecord,
-				index:        r.numProcessed,
-				ignoreBlanks: r.ignoreBlanks,
-				rejectWriter: r.csvRejectWriter,
+				colSpecs:            r.colSpecs,
+				data:                r.csvRecord,
+				index:               r.numProcessed,
+				ignoreBlanks:        r.ignoreBlanks,
+				useArrayIndexFields: r.useArrayIndexFields,
+				rejectWriter:        r.csvRejectWriter,
 			}
 			r.numProcessed++
 		}
@@ -138,6 +150,7 @@ func (c CSVConverter) Convert() (b bson.D, err error) {
 		c.data,
 		c.index,
 		c.ignoreBlanks,
+		c.useArrayIndexFields,
 	)
 	if _, ok := err.(coercionError); ok {
 		c.Print()

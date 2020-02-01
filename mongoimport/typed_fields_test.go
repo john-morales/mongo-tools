@@ -1,13 +1,21 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongoimport
 
 import (
-	"github.com/mongodb/mongo-tools/common/log"
-	"github.com/mongodb/mongo-tools/common/options"
-	"github.com/mongodb/mongo-tools/common/testutil"
-	. "github.com/smartystreets/goconvey/convey"
-	"gopkg.in/mgo.v2/bson"
 	"testing"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
+
+	"github.com/mongodb/mongo-tools-common/log"
+	"github.com/mongodb/mongo-tools-common/options"
+	"github.com/mongodb/mongo-tools-common/testtype"
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 func init() {
@@ -17,7 +25,7 @@ func init() {
 }
 
 func TestTypedHeaderParser(t *testing.T) {
-	testutil.VerifyTestType(t, testutil.UnitTestType)
+	testtype.SkipUnlessTestType(t, testtype.UnitTestType)
 
 	Convey("Using 'zip.string(),number.double(),foo.auto()'", t, func() {
 		var headers = []string{"zip.string()", "number.double()", "foo.auto()", `bar.date(January 2\, \(2006\))`}
@@ -27,20 +35,20 @@ func TestTypedHeaderParser(t *testing.T) {
 		Convey("with parse grace: auto", func() {
 			colSpecs, err = ParseTypedHeaders(headers, pgAutoCast)
 			So(colSpecs, ShouldResemble, []ColumnSpec{
-				{"zip", new(FieldStringParser), pgAutoCast, "string"},
-				{"number", new(FieldDoubleParser), pgAutoCast, "double"},
-				{"foo", new(FieldAutoParser), pgAutoCast, "auto"},
-				{"bar", &FieldDateParser{"January 2, (2006)"}, pgAutoCast, "date"},
+				{"zip", new(FieldStringParser), pgAutoCast, "string", []string{"zip"}},
+				{"number", new(FieldDoubleParser), pgAutoCast, "double", []string{"number"}},
+				{"foo", new(FieldAutoParser), pgAutoCast, "auto", []string{"foo"}},
+				{"bar", &FieldDateParser{"January 2, (2006)"}, pgAutoCast, "date", []string{"bar"}},
 			})
 			So(err, ShouldBeNil)
 		})
 		Convey("with parse grace: skipRow", func() {
 			colSpecs, err = ParseTypedHeaders(headers, pgSkipRow)
 			So(colSpecs, ShouldResemble, []ColumnSpec{
-				{"zip", new(FieldStringParser), pgSkipRow, "string"},
-				{"number", new(FieldDoubleParser), pgSkipRow, "double"},
-				{"foo", new(FieldAutoParser), pgSkipRow, "auto"},
-				{"bar", &FieldDateParser{"January 2, (2006)"}, pgSkipRow, "date"},
+				{"zip", new(FieldStringParser), pgSkipRow, "string", []string{"zip"}},
+				{"number", new(FieldDoubleParser), pgSkipRow, "double", []string{"number"}},
+				{"foo", new(FieldAutoParser), pgSkipRow, "auto", []string{"foo"}},
+				{"bar", &FieldDateParser{"January 2, (2006)"}, pgSkipRow, "date", []string{"bar"}},
 			})
 			So(err, ShouldBeNil)
 		})
@@ -75,19 +83,20 @@ func TestTypedHeaderParser(t *testing.T) {
 }
 
 func TestAutoHeaderParser(t *testing.T) {
+	testtype.SkipUnlessTestType(t, testtype.UnitTestType)
 	Convey("Using 'zip,number'", t, func() {
 		var headers = []string{"zip", "number", "foo"}
 		var colSpecs = ParseAutoHeaders(headers)
 		So(colSpecs, ShouldResemble, []ColumnSpec{
-			{"zip", new(FieldAutoParser), pgAutoCast, "auto"},
-			{"number", new(FieldAutoParser), pgAutoCast, "auto"},
-			{"foo", new(FieldAutoParser), pgAutoCast, "auto"},
+			{"zip", new(FieldAutoParser), pgAutoCast, "auto", []string{"zip"}},
+			{"number", new(FieldAutoParser), pgAutoCast, "auto", []string{"number"}},
+			{"foo", new(FieldAutoParser), pgAutoCast, "auto", []string{"foo"}},
 		})
 	})
 }
 
 func TestFieldParsers(t *testing.T) {
-	testutil.VerifyTestType(t, testutil.UnitTestType)
+	testtype.SkipUnlessTestType(t, testtype.UnitTestType)
 
 	Convey("Using FieldAutoParser", t, func() {
 		var p, _ = NewFieldParser(ctAuto, "")
@@ -370,12 +379,12 @@ func TestFieldParsers(t *testing.T) {
 
 		Convey("parses valid decimal values correctly", func() {
 			for _, ts := range []string{"12235.2355", "42", "0", "-124", "-124.55"} {
-				testVal, err := bson.ParseDecimal128(ts)
+				testVal, err := primitive.ParseDecimal128(ts)
 				So(err, ShouldBeNil)
 				parsedValue, err := p.Parse(ts)
 				So(err, ShouldBeNil)
 
-				So(testVal, ShouldResemble, parsedValue.(bson.Decimal128))
+				So(testVal, ShouldResemble, parsedValue.(primitive.Decimal128))
 			}
 		})
 		Convey("does not parse invalid decimal values", func() {

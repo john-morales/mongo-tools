@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package stat_consumer
 
 import (
@@ -5,7 +11,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/mongodb/mongo-tools/common/util"
+	"github.com/mongodb/mongo-tools-common/util"
 	"github.com/mongodb/mongo-tools/mongostat/stat_consumer/line"
 	"github.com/mongodb/mongo-tools/mongostat/status"
 )
@@ -90,7 +96,7 @@ func (sc *StatConsumer) FormatLines(lines []*line.StatLine) bool {
 	_, err := fmt.Fprintf(sc.writer, "%s", str)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error writing formatted output: %v", err)
-		os.Exit(util.ExitError)
+		os.Exit(util.ExitFailure)
 	}
 	return sc.formatter.IsFinished()
 }

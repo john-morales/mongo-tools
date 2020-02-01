@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package dateconv
 
 import (
@@ -70,7 +76,7 @@ var (
 	oracleStringReplacer = strings.NewReplacer(oracleReplacers...)
 )
 
-// FromOrace reformats a datetime layout string from the Oracle Database
+// FromOracle reformats a datetime layout string from the Oracle Database
 // TO_DATE function into go's parse format.
 func FromOracle(layout string) string {
 	return oracleStringReplacer.Replace(strings.ToUpper(layout))

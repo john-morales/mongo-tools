@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package status
 
 import "time"
@@ -29,7 +35,7 @@ type ServerStatus struct {
 	Mem                *MemStats              `bson:"mem"`
 	Repl               *ReplStatus            `bson:"repl"`
 	ShardCursorType    map[string]interface{} `bson:"shardCursorType"`
-	StorageEngine      map[string]string      `bson:"storageEngine"`
+	StorageEngine      *StorageEngine         `bson:"storageEngine"`
 	WiredTiger         *WiredTiger            `bson:"wiredTiger"`
 }
 
@@ -47,6 +53,10 @@ type ConcurrentTransactions struct {
 
 type ConcurrentTransStats struct {
 	Out int64 `bson:"out"`
+}
+
+type StorageEngine struct {
+	Name string `bson:"name"`
 }
 
 // CacheStats stores cache statistics for WiredTiger.
@@ -170,7 +180,7 @@ type NetworkStats struct {
 	NumRequests int64 `bson:"numRequests"`
 }
 
-// OpcountStats stores information related to comamnds and basic CRUD operations.
+// OpcountStats stores information related to commands and basic CRUD operations.
 type OpcountStats struct {
 	Insert  int64 `bson:"insert"`
 	Query   int64 `bson:"query"`

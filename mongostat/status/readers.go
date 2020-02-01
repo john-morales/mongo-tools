@@ -1,14 +1,20 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package status
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"time"
 
-	"github.com/mongodb/mongo-tools/common/text"
-	"github.com/mongodb/mongo-tools/common/util"
-	"math"
+	"github.com/mongodb/mongo-tools-common/text"
+	"github.com/mongodb/mongo-tools-common/util"
 )
 
 type ReaderConfig struct {
@@ -153,8 +159,8 @@ func diffOp(newStat, oldStat *ServerStatus, f func(*OpcountStats) int64, both bo
 
 func getStorageEngine(stat *ServerStatus) string {
 	val := "mmapv1"
-	if stat.StorageEngine != nil && stat.StorageEngine["name"] != "" {
-		val = stat.StorageEngine["name"]
+	if stat.StorageEngine != nil && stat.StorageEngine.Name != "" {
+		val = stat.StorageEngine.Name
 	}
 	return val
 }

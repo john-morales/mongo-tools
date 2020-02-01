@@ -12,6 +12,9 @@
   var db = conn.getDB("test");
   var replDB = replTest.getPrimary().getDB("test");
 
+  // whether or not this is mmapv1, this will effect some results
+  var isMMAPV1 = replDB.serverStatus().storageEngine.name === "mmapv1";
+
   db.a.insert({a: 1});
   db.a.insert({a: 2});
   db.a.insert({a: 3});
@@ -39,28 +42,48 @@
   assert.eq(db.a.find({a: 5}).toArray().length, 2);
   // assert that the shell queries happened only on primaries
   profQuery= {ns: "test.a", op: "query"};
-  assert.eq(replDB.system.profile.find().count(profQuery), 3,
-        "three queries should have been logged");
+  assert.eq(replDB.system.profile.find(profQuery).count(), 3,
+    "three queries should have been logged");
   for (i = 0; i < secondaries.length; i++) {
     assert.eq(secondaries[i].system.profile.find(profQuery).count(), 0,
-          "no queries should be against secondaries");
+      "no queries should be against secondaries");
   }
 
   print("running mongodump on mongos");
   mongosAddr = st.getConnNames()[0];
   runMongoProgram("mongodump", "--host", st.s.host, "-vvvv");
   assert.eq(replDB.system.profile.find(profQuery).count(), 4, "queries are routed to primary");
-  assert.eq(replDB.system.profile.find({
+  printjson(replDB.system.profile.find(profQuery).toArray());
+
+  var hintCount = replDB.system.profile.find({
     ns: "test.a",
     op: "query",
-    $or: [{"query.$snapshot": true}, {"query.snapshot": true}]
-  }).count(), 1);
-  printjson(replDB.system.profile.find(profQuery).toArray());
+    $or: [
+      // 4.0
+      {"command.hint._id": 1},
+
+      // 3.6 schema
+      {"command.$snapshot": true},
+      {"command.snapshot": true},
+
+      // 3.4 and previous schema
+      {"query.$snapshot": true},
+      {"query.snapshot": true},
+      {"query.hint._id": 1},
+    ]
+  }).count();
+  // in a mmapv1 stored database, we should snapshot or have a query hint set.
+  if (isMMAPV1) {
+    assert.eq(hintCount, 1);
+  } else {
+    assert.eq(hintCount, 0);
+  }
+
   // make sure the secondaries saw 0 queries
   for (i = 0; i < secondaries.length; i++) {
     print("checking secondary " + i);
     assert.eq(secondaries[i].system.profile.find(profQuery).count(), 0,
-          "no dump queries should be against secondaries");
+      "no dump queries should be against secondaries");
   }
 
 }());

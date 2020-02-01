@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongoimport
 
 import (
@@ -11,8 +17,9 @@ import (
 	"strings"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson/primitive"
+
 	"github.com/mongodb/mongo-tools/mongoimport/dateconv"
-	"gopkg.in/mgo.v2/bson"
 )
 
 // columnType defines different types for columns that can be parsed distinctly
@@ -71,6 +78,7 @@ type ColumnSpec struct {
 	Parser     FieldParser
 	ParseGrace ParseGrace
 	TypeName   string
+	NameParts  []string
 }
 
 // ColumnNames maps a ColumnSpec slice to their associated names
@@ -98,7 +106,8 @@ func ParseTypedHeader(header string, parseGrace ParseGrace) (f ColumnSpec, err e
 	if err != nil {
 		return
 	}
-	return ColumnSpec{match[1], p, parseGrace, match[2]}, nil
+	nameParts := strings.Split(match[1], ".")
+	return ColumnSpec{match[1], p, parseGrace, match[2], nameParts}, nil
 }
 
 // ParseTypedHeaders performs ParseTypedHeader on each item, returning an
@@ -119,7 +128,8 @@ func ParseTypedHeaders(headers []string, parseGrace ParseGrace) (fs []ColumnSpec
 func ParseAutoHeaders(headers []string) (fs []ColumnSpec) {
 	fs = make([]ColumnSpec, len(headers))
 	for i, f := range headers {
-		fs[i] = ColumnSpec{f, new(FieldAutoParser), pgAutoCast, "auto"}
+		nameParts := strings.Split(f, ".")
+		fs[i] = ColumnSpec{f, new(FieldAutoParser), pgAutoCast, "auto", nameParts}
 	}
 	return
 }
@@ -274,7 +284,7 @@ func (ip *FieldInt64Parser) Parse(in string) (interface{}, error) {
 type FieldDecimalParser struct{}
 
 func (ip *FieldDecimalParser) Parse(in string) (interface{}, error) {
-	return bson.ParseDecimal128(in)
+	return primitive.ParseDecimal128(in)
 }
 
 type FieldStringParser struct{}

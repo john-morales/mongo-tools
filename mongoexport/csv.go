@@ -1,11 +1,17 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongoexport
 
 import (
 	"encoding/csv"
 	"fmt"
-	"github.com/mongodb/mongo-tools/common/bsonutil"
-	"github.com/mongodb/mongo-tools/common/json"
-	"gopkg.in/mgo.v2/bson"
+	"github.com/mongodb/mongo-tools-common/bsonutil"
+	"github.com/mongodb/mongo-tools-common/json"
+	"go.mongodb.org/mongo-driver/bson"
 	"io"
 	"reflect"
 	"strconv"
@@ -66,7 +72,7 @@ func (csvExporter *CSVExportOutput) Flush() error {
 // ExportDocument writes a line to output with the CSV representation of a document.
 func (csvExporter *CSVExportOutput) ExportDocument(document bson.D) error {
 	rowOut := make([]string, 0, len(csvExporter.Fields))
-	extendedDoc, err := bsonutil.ConvertBSONValueToJSON(document)
+	extendedDoc, err := bsonutil.ConvertBSONValueToLegacyExtJSON(document)
 	if err != nil {
 		return err
 	}

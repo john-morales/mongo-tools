@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package ns
 
 import (
@@ -10,7 +16,7 @@ import (
 type Renamer struct {
 	// List of regexps to match namespaces against
 	matchers []*regexp.Regexp
-	// List of regexp-syle replacement strings to use with the matcher
+	// List of regexp-style replacement strings to use with the matcher
 	replacers []string
 }
 

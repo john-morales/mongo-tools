@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongoreplay
 
 import (
@@ -50,7 +56,7 @@ func (gen *RegularStatGenerator) AddUnresolvedOp(op *RecordedOp, parsedOp Op, re
 //
 // recordedReply is the just received reply in the form of a RecordedOp, which
 // contains additional metadata.  parsedReply is the same reply, parsed so that
-// the payload of the op can be accesssed.  replyStat is the OpStat created by
+// the payload of the op can be accessed.  replyStat is the OpStat created by
 // the GenerateOpStat function, containing computed metadata about the reply.
 func (gen *RegularStatGenerator) ResolveOp(recordedReply *RecordedOp, reply Replyable, replyStat *OpStat) *OpStat {
 	result := &OpStat{}
@@ -98,7 +104,7 @@ func (monitor *MonitorCommand) Execute(args []string) error {
 		if err != nil {
 			return err
 		}
-		opChan, errChan = NewOpChanFromFile(playbackFileReader, 1)
+		opChan, errChan = playbackFileReader.OpChan(1)
 
 	} else {
 		ctx, err := getOpstream(monitor.OpStreamSettings)

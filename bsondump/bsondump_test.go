@@ -1,18 +1,30 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package bsondump
 
 import (
 	"bytes"
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
 
+	"github.com/mongodb/mongo-tools-common/testtype"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestBsondump(t *testing.T) {
-
+	executable := "../bin/bsondump"
+	if runtime.GOOS == "windows" {
+		executable = "../bin/bsondump.exe"
+	}
+	testtype.SkipUnlessTestType(t, testtype.UnitTestType)
 	Convey("Test bsondump reading from stdin and writing to stdout", t, func() {
-		cmd := exec.Command("../bin/bsondump")
+		cmd := exec.Command(executable)
 
 		// Attach a file to stdin of the command.
 		inFile, err := os.Open("testdata/sample.bson")
@@ -38,7 +50,7 @@ func TestBsondump(t *testing.T) {
 	})
 
 	Convey("Test bsondump reading from stdin and writing to a file", t, func() {
-		cmd := exec.Command("../bin/bsondump", "--outFile", "out.json")
+		cmd := exec.Command(executable, "--outFile", "out.json")
 
 		// Attach a file to stdin of the command.
 		inFile, err := os.Open("testdata/sample.bson")
@@ -63,10 +75,14 @@ func TestBsondump(t *testing.T) {
 		bufDumpStr := bufDump.String()
 
 		So(bufDumpStr, ShouldEqual, bufRefStr)
+
+		Reset(func() {
+			os.Remove("out.json")
+		})
 	})
 
 	Convey("Test bsondump reading from a file with --bsonFile and writing to stdout", t, func() {
-		cmd := exec.Command("../bin/bsondump", "--bsonFile", "testdata/sample.bson")
+		cmd := exec.Command(executable, "--bsonFile", "testdata/sample.bson")
 
 		// Attach a buffer to stdout of the command.
 		cmdOutput := &bytes.Buffer{}
@@ -87,7 +103,7 @@ func TestBsondump(t *testing.T) {
 	})
 
 	Convey("Test bsondump reading from a file with a positional arg and writing to stdout", t, func() {
-		cmd := exec.Command("../bin/bsondump", "testdata/sample.bson")
+		cmd := exec.Command(executable, "testdata/sample.bson")
 
 		// Attach a buffer to stdout of command.
 		cmdOutput := &bytes.Buffer{}
@@ -108,8 +124,7 @@ func TestBsondump(t *testing.T) {
 	})
 
 	Convey("Test bsondump reading from a file with --bsonFile and writing to a file", t, func() {
-		cmd := exec.Command("../bin/bsondump", "--outFile", "out.json",
-			"--bsonFile", "testdata/sample.bson")
+		cmd := exec.Command(executable, "--outFile", "out.json", "--bsonFile", "testdata/sample.bson")
 
 		err := cmd.Run()
 		So(err, ShouldBeNil)
@@ -129,10 +144,14 @@ func TestBsondump(t *testing.T) {
 		bufDumpStr := bufDump.String()
 
 		So(bufDumpStr, ShouldEqual, bufRefStr)
+
+		Reset(func() {
+			os.Remove("out.json")
+		})
 	})
 
 	Convey("Test bsondump reading from a file with a positional arg and writing to a file", t, func() {
-		cmd := exec.Command("../bin/bsondump", "--outFile", "out.json", "testdata/sample.bson")
+		cmd := exec.Command(executable, "--outFile", "out.json", "testdata/sample.bson")
 
 		err := cmd.Run()
 		So(err, ShouldBeNil)
@@ -152,5 +171,9 @@ func TestBsondump(t *testing.T) {
 		bufDumpStr := bufDump.String()
 
 		So(bufDumpStr, ShouldEqual, bufRefStr)
+
+		Reset(func() {
+			os.Remove("out.json")
+		})
 	})
 }

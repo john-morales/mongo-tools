@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongoimport
 
 import (
@@ -6,7 +12,7 @@ import (
 	"io"
 	"strings"
 
-	"gopkg.in/mgo.v2/bson"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 const (
@@ -41,29 +47,34 @@ type TSVInputReader struct {
 
 	// ignoreBlanks is whether empty fields should be ignored
 	ignoreBlanks bool
+
+	// useArrayIndexFields is whether field names include array indexes
+	useArrayIndexFields bool
 }
 
 // TSVConverter implements the Converter interface for TSV input.
 type TSVConverter struct {
-	colSpecs     []ColumnSpec
-	data         string
-	index        uint64
-	ignoreBlanks bool
-	rejectWriter io.Writer
+	colSpecs            []ColumnSpec
+	data                string
+	index               uint64
+	ignoreBlanks        bool
+	useArrayIndexFields bool
+	rejectWriter        io.Writer
 }
 
 // NewTSVInputReader returns a TSVInputReader configured to read input from the
 // given io.Reader, extracting the specified columns only.
-func NewTSVInputReader(colSpecs []ColumnSpec, in io.Reader, rejects io.Writer, numDecoders int, ignoreBlanks bool) *TSVInputReader {
+func NewTSVInputReader(colSpecs []ColumnSpec, in io.Reader, rejects io.Writer, numDecoders int, ignoreBlanks bool, useArrayIndexFields bool) *TSVInputReader {
 	szCount := newSizeTrackingReader(newBomDiscardingReader(in))
 	return &TSVInputReader{
-		colSpecs:        colSpecs,
-		tsvReader:       bufio.NewReader(szCount),
-		tsvRejectWriter: rejects,
-		numProcessed:    uint64(0),
-		numDecoders:     numDecoders,
-		sizeTracker:     szCount,
-		ignoreBlanks:    ignoreBlanks,
+		colSpecs:            colSpecs,
+		tsvReader:           bufio.NewReader(szCount),
+		tsvRejectWriter:     rejects,
+		numProcessed:        uint64(0),
+		numDecoders:         numDecoders,
+		sizeTracker:         szCount,
+		ignoreBlanks:        ignoreBlanks,
+		useArrayIndexFields: useArrayIndexFields,
 	}
 }
 
@@ -74,13 +85,12 @@ func (r *TSVInputReader) ReadAndValidateHeader() (err error) {
 	if err != nil {
 		return err
 	}
+	var headerFields []string
 	for _, field := range strings.Split(header, tokenSeparator) {
-		r.colSpecs = append(r.colSpecs, ColumnSpec{
-			Name:   strings.TrimRight(field, "\r\n"),
-			Parser: new(FieldAutoParser),
-		})
+		headerFields = append(headerFields, strings.TrimRight(field, "\r\n"))
 	}
-	return validateReaderFields(ColumnNames(r.colSpecs))
+	r.colSpecs = ParseAutoHeaders(headerFields)
+	return validateReaderFields(ColumnNames(r.colSpecs), r.useArrayIndexFields)
 }
 
 // ReadAndValidateTypedHeader reads the header from the underlying reader and validates
@@ -98,7 +108,7 @@ func (r *TSVInputReader) ReadAndValidateTypedHeader(parseGrace ParseGrace) (err 
 	if err != nil {
 		return err
 	}
-	return validateReaderFields(ColumnNames(r.colSpecs))
+	return validateReaderFields(ColumnNames(r.colSpecs), r.useArrayIndexFields)
 }
 
 // StreamDocument takes a boolean indicating if the documents should be streamed
@@ -124,11 +134,12 @@ func (r *TSVInputReader) StreamDocument(ordered bool, readDocs chan bson.D) (ret
 				return
 			}
 			tsvRecordChan <- TSVConverter{
-				colSpecs:     r.colSpecs,
-				data:         r.tsvRecord,
-				index:        r.numProcessed,
-				ignoreBlanks: r.ignoreBlanks,
-				rejectWriter: r.tsvRejectWriter,
+				colSpecs:            r.colSpecs,
+				data:                r.tsvRecord,
+				index:               r.numProcessed,
+				ignoreBlanks:        r.ignoreBlanks,
+				useArrayIndexFields: r.useArrayIndexFields,
+				rejectWriter:        r.tsvRejectWriter,
 			}
 			r.numProcessed++
 		}
@@ -150,6 +161,7 @@ func (c TSVConverter) Convert() (b bson.D, err error) {
 		strings.Split(strings.TrimRight(c.data, "\r\n"), tokenSeparator),
 		c.index,
 		c.ignoreBlanks,
+		c.useArrayIndexFields,
 	)
 	if _, ok := err.(coercionError); ok {
 		c.Print()

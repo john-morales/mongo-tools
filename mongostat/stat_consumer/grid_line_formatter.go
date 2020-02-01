@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package stat_consumer
 
 import (
@@ -6,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mongodb/mongo-tools/common/text"
+	"github.com/mongodb/mongo-tools-common/text"
 	"github.com/mongodb/mongo-tools/mongostat/stat_consumer/line"
 )
 
@@ -39,6 +45,9 @@ func init() {
 
 // headerInterval is the number of chunks before the header is re-printed in GridLineFormatter
 const headerInterval = 10
+
+func (glf *GridLineFormatter) Finish() {
+}
 
 // FormatLines formats the StatLines as a grid
 func (glf *GridLineFormatter) FormatLines(lines []*line.StatLine, headerKeys []string, keyNames map[string]string) string {

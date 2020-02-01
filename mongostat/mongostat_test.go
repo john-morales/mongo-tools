@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongostat
 
 import (
@@ -6,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mongodb/mongo-tools/common/testutil"
+	"github.com/mongodb/mongo-tools-common/testtype"
 	"github.com/mongodb/mongo-tools/mongostat/stat_consumer/line"
 	"github.com/mongodb/mongo-tools/mongostat/status"
 	. "github.com/smartystreets/goconvey/convey"
@@ -27,7 +33,7 @@ func readBSONFile(file string, t *testing.T) (stat *status.ServerStatus) {
 }
 
 func TestStatLine(t *testing.T) {
-	testutil.VerifyTestType(t, testutil.UnitTestType)
+	testtype.SkipUnlessTestType(t, testtype.UnitTestType)
 
 	defaultHeaders := make([]string, len(line.CondHeaders))
 	for i, h := range line.CondHeaders {
@@ -97,7 +103,7 @@ func TestStatLine(t *testing.T) {
 }
 
 func TestIsMongos(t *testing.T) {
-	testutil.VerifyTestType(t, testutil.UnitTestType)
+	testtype.SkipUnlessTestType(t, testtype.UnitTestType)
 
 	runCheck := func(process string) bool {
 		return status.IsMongos(&status.ServerStatus{

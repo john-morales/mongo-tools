@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 // Main package for the mongostat tool.
 package main
 
@@ -7,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mongodb/mongo-tools/common/log"
-	"github.com/mongodb/mongo-tools/common/options"
-	"github.com/mongodb/mongo-tools/common/password"
-	"github.com/mongodb/mongo-tools/common/signals"
-	"github.com/mongodb/mongo-tools/common/util"
+	"github.com/mongodb/mongo-tools-common/log"
+	"github.com/mongodb/mongo-tools-common/options"
+	"github.com/mongodb/mongo-tools-common/password"
+	"github.com/mongodb/mongo-tools-common/signals"
+	"github.com/mongodb/mongo-tools-common/util"
 	"github.com/mongodb/mongo-tools/mongostat"
 	"github.com/mongodb/mongo-tools/mongostat/stat_consumer"
 	"github.com/mongodb/mongo-tools/mongostat/stat_consumer/line"
@@ -45,12 +51,17 @@ func optionCustomHeaders(option string) (headers []string) {
 	return
 }
 
+var (
+	VersionStr = "built-without-version-string"
+	GitCommit  = "build-without-git-commit"
+)
+
 func main() {
 	// initialize command-line opts
 	opts := options.New(
-		"mongostat",
+		"mongostat", VersionStr, GitCommit,
 		mongostat.Usage,
-		options.EnabledOptions{Connection: true, Auth: true, Namespace: false})
+		options.EnabledOptions{Connection: true, Auth: true, Namespace: false, URI: true})
 	opts.UseReadOnlyHostDescription()
 
 	// add mongostat-specific options
@@ -64,31 +75,31 @@ func main() {
 		interactiveOption.ShortName = 0
 	}
 
-	args, err := opts.Parse()
+	args, err := opts.ParseArgs(os.Args[1:])
 	if err != nil {
 		log.Logvf(log.Always, "error parsing command line options: %v", err)
-		log.Logvf(log.Always, "try 'mongostat --help' for more information")
-		os.Exit(util.ExitBadOptions)
+		log.Logvf(log.Always, util.ShortUsage("mongostat"))
+		os.Exit(util.ExitFailure)
 	}
 
 	log.SetVerbosity(opts.Verbosity)
 	signals.Handle()
 
-	sleepInterval := 1000
+	sleepIntervalMillis := 1000
 	if len(args) > 0 {
 		if len(args) != 1 {
 			log.Logvf(log.Always, "too many positional arguments: %v", args)
-			log.Logvf(log.Always, "try 'mongostat --help' for more information")
-			os.Exit(util.ExitBadOptions)
+			log.Logvf(log.Always, util.ShortUsage("mongostat"))
+			os.Exit(util.ExitFailure)
 		}
-		sleepInterval, err = strconv.Atoi(args[0])
+		sleepIntervalMillis, err = strconv.Atoi(args[0])
 		if err != nil {
 			log.Logvf(log.Always, "invalid sleep interval: %v", args[0])
-			os.Exit(util.ExitBadOptions)
+			os.Exit(util.ExitFailure)
 		}
-		if sleepInterval < 10 {
+		if sleepIntervalMillis < 10 {
 			log.Logvf(log.Always, "sleep interval must be at least 10 milliseconds")
-			os.Exit(util.ExitBadOptions)
+			os.Exit(util.ExitFailure)
 		}
 	}
 
@@ -102,40 +113,54 @@ func main() {
 		return
 	}
 
-	if opts.Auth.Username != "" && opts.Auth.Source == "" && !opts.Auth.RequiresExternalDB() {
+	// verify uri options and log them
+	opts.URI.LogUnsupportedOptions()
+
+	if opts.Auth.Username != "" && opts.GetAuthenticationDatabase() == "" && !opts.Auth.RequiresExternalDB() {
+		// add logic to have different error if using uri
+		if opts.URI != nil && opts.URI.ConnectionString != "" {
+			log.Logvf(log.Always, "authSource is required when authenticating against a non $external database")
+			os.Exit(util.ExitFailure)
+		}
+
 		log.Logvf(log.Always, "--authenticationDatabase is required when authenticating against a non $external database")
-		os.Exit(util.ExitBadOptions)
+		os.Exit(util.ExitFailure)
 	}
 
 	if statOpts.Interactive && statOpts.Json {
 		log.Logvf(log.Always, "cannot use output formats --json and --interactive together")
-		os.Exit(util.ExitBadOptions)
+		os.Exit(util.ExitFailure)
 	}
 
 	if statOpts.Deprecated && !statOpts.Json {
 		log.Logvf(log.Always, "--useDeprecatedJsonKeys can only be used when --json is also specified")
-		os.Exit(util.ExitBadOptions)
+		os.Exit(util.ExitFailure)
 	}
 
 	if statOpts.Columns != "" && statOpts.AppendColumns != "" {
 		log.Logvf(log.Always, "-O cannot be used if -o is also specified")
-		os.Exit(util.ExitBadOptions)
+		os.Exit(util.ExitFailure)
 	}
 
 	if statOpts.HumanReadable != "true" && statOpts.HumanReadable != "false" {
 		log.Logvf(log.Always, "--humanReadable must be set to either 'true' or 'false'")
-		os.Exit(util.ExitBadOptions)
+		os.Exit(util.ExitFailure)
 	}
 
 	if statOpts.CpuCount <= 0 {
 		log.Logvf(log.Always, "--cpus must be positive number of CPUs")
-		os.Exit(util.ExitBadOptions)
+		os.Exit(util.ExitFailure)
 	}
 
 	// we have to check this here, otherwise the user will be prompted
 	// for a password for each discovered node
 	if opts.Auth.ShouldAskForPassword() {
-		opts.Auth.Password = password.Prompt()
+		pass, err := password.Prompt()
+		if err != nil {
+			log.Logvf(log.Always, "Failed: %v", err)
+			os.Exit(util.ExitFailure)
+		}
+		opts.Auth.Password = pass
 	}
 
 	var factory stat_consumer.FormatterConstructor
@@ -219,25 +244,30 @@ func main() {
 	}
 
 	opts.Direct = true
-	_, setName := util.ParseConnectionString(opts.Host)
-	opts.ReplicaSetName = setName
 	stat := &mongostat.MongoStat{
 		Options:       opts,
 		StatOptions:   statOpts,
 		Nodes:         map[string]*mongostat.NodeMonitor{},
 		Discovered:    discoverChan,
-		SleepInterval: time.Duration(sleepInterval) * time.Millisecond,
+		SleepInterval: time.Duration(sleepIntervalMillis) * time.Millisecond,
 		Cluster:       cluster,
 	}
 
 	for _, v := range seedHosts {
-		stat.AddNewNode(v)
+		if err := stat.AddNewNode(v); err != nil {
+			log.Logv(log.Always, err.Error())
+			os.Exit(util.ExitFailure)
+		}
 	}
 
 	// kick it off
 	err = stat.Run()
+	for _, monitor := range stat.Nodes {
+		monitor.Disconnect()
+	}
+	formatter.Finish()
 	if err != nil {
 		log.Logvf(log.Always, "Failed: %v", err)
-		os.Exit(util.ExitError)
+		os.Exit(util.ExitFailure)
 	}
 }

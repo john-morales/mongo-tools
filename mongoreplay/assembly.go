@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongoreplay
 
 import (
@@ -405,7 +411,7 @@ type AssemblerOptions struct {
 // NOTE:  If you can guarantee that packets going to a set of Assemblers will
 // contain information on different connections per Assembler (for example,
 // they're already hashed by PF_RING hashing or some other hashing mechanism),
-// then we recommend you use a seperate StreamPool per Assembler, thus avoiding
+// then we recommend you use a separate StreamPool per Assembler, thus avoiding
 // all lock contention.  Only when different Assemblers could receive packets
 // for the same Stream should a StreamPool be shared between them.
 //

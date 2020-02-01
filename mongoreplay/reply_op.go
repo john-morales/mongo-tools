@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongoreplay
 
 import (
@@ -96,9 +102,9 @@ func (op *ReplyOp) FromReader(r io.Reader) error {
 	return nil
 }
 
-// Execute performs the ReplyOp on a given session, yielding the reply when
+// Execute performs the ReplyOp on a given socket, yielding the reply when
 // successful (and an error otherwise).
-func (op *ReplyOp) Execute(session *mgo.Session) (Replyable, error) {
+func (op *ReplyOp) Execute(socket *mgo.MongoSocket) (Replyable, error) {
 	return nil, nil
 }
 
@@ -119,7 +125,7 @@ func stringifyReplyDocs(d []bson.Raw) string {
 
 // getCursorID implements the Replyable interface method. It returns the
 // cursorID stored in this reply. It returns an error if there is an issue
-// unmarshaling the underlying bson. It caches the cursorID in the ReplyOp
+// unmarshalling the underlying bson. It caches the cursorID in the ReplyOp
 // struct so that subsequent calls to this function do not incur cost of
 // unmarshalling the bson each time.
 func (op *ReplyOp) getCursorID() (int64, error) {

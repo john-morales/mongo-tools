@@ -1,17 +1,25 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongoexport
 
 import (
 	"bytes"
-	"github.com/mongodb/mongo-tools/common/db"
-	"github.com/mongodb/mongo-tools/common/json"
-	"github.com/mongodb/mongo-tools/common/testutil"
-	. "github.com/smartystreets/goconvey/convey"
 	"strings"
 	"testing"
+
+	"github.com/mongodb/mongo-tools-common/db"
+	"github.com/mongodb/mongo-tools-common/json"
+	"github.com/mongodb/mongo-tools-common/testtype"
+	"github.com/mongodb/mongo-tools-common/testutil"
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestKerberos(t *testing.T) {
-	testutil.VerifyTestType(t, testutil.KerberosTestType)
+	testtype.SkipUnlessTestType(t, testtype.KerberosTestType)
 
 	Convey("Should be able to run mongoexport with Kerberos auth", t, func() {
 		opts, err := testutil.GetKerberosOptions()
@@ -22,7 +30,7 @@ func TestKerberos(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		export := MongoExport{
-			ToolOptions:     *opts,
+			ToolOptions:     opts,
 			OutputOpts:      &OutputFormatOptions{},
 			InputOpts:       &InputOptions{},
 			SessionProvider: sessionProvider,

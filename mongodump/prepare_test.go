@@ -1,14 +1,21 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongodump
 
 import (
-	"github.com/mongodb/mongo-tools/common/testutil"
-	. "github.com/smartystreets/goconvey/convey"
 	"testing"
+
+	"github.com/mongodb/mongo-tools-common/testtype"
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestSkipCollection(t *testing.T) {
 
-	testutil.VerifyTestType(t, testutil.UnitTestType)
+	testtype.SkipUnlessTestType(t, testtype.UnitTestType)
 
 	Convey("With a mongodump that excludes collections 'test' and 'fake'"+
 		" and excludes prefixes 'pre-' and 'no'", t, func() {
@@ -48,4 +55,42 @@ func TestSkipCollection(t *testing.T) {
 		})
 	})
 
+}
+
+type testTable struct {
+	db     string
+	coll   string
+	output bool
+}
+
+func TestShouldSkipSystemNamespace(t *testing.T) {
+	testtype.SkipUnlessTestType(t, testtype.UnitTestType)
+	tests := []testTable{
+		{
+			db:     "test",
+			coll:   "system",
+			output: false,
+		},
+		{
+			db:     "test",
+			coll:   "system.nonsense",
+			output: true,
+		},
+		{
+			db:     "test",
+			coll:   "system.js",
+			output: false,
+		},
+		{
+			db:     "test",
+			coll:   "test",
+			output: false,
+		},
+	}
+
+	for _, testVals := range tests {
+		if shouldSkipSystemNamespace(testVals.db, testVals.coll) != testVals.output {
+			t.Errorf("%s.%s should have been %v but failed\n", testVals.db, testVals.coll, testVals.output)
+		}
+	}
 }

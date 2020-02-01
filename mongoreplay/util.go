@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongoreplay
 
 import (
@@ -12,7 +18,7 @@ import (
 
 	mgo "github.com/10gen/llmgo"
 	bson "github.com/10gen/llmgo/bson"
-	"github.com/mongodb/mongo-tools/common/json"
+	"github.com/mongodb/mongo-tools/legacy/json"
 )
 
 var (
@@ -83,6 +89,102 @@ func ReadDocument(r io.Reader) (doc []byte, err error) {
 
 	_, err = io.ReadFull(r, doc[4:])
 	return
+}
+
+func getCursorID(in *bson.Raw) (int64, error) {
+	doc := &struct {
+		Cursor struct {
+			ID int64 `bson:"id"`
+		} `bson:"cursor"`
+	}{}
+	err := in.Unmarshal(doc)
+	if err != nil {
+		// can happen if there's corrupt bson in the doc.
+		return 0, fmt.Errorf("failed to unmarshal bson.Raw into struct: %v", err)
+	}
+	return doc.Cursor.ID, nil
+}
+
+func getCursorDocs(in *bson.Raw) ([]bson.Raw, error) {
+	doc := &struct {
+		Cursor struct {
+			FirstBatch []bson.Raw `bson:"firstBatch"`
+			NextBatch  []bson.Raw `bson:"nextBatch"`
+		} `bson:"cursor"`
+	}{}
+	err := in.Unmarshal(&doc)
+	if err != nil {
+		return []bson.Raw{}, err
+	}
+
+	if len(doc.Cursor.FirstBatch) != 0 {
+		return doc.Cursor.FirstBatch, nil
+	} else if len(doc.Cursor.NextBatch) != 0 {
+		return doc.Cursor.NextBatch, nil
+	}
+	return []bson.Raw{}, nil
+}
+
+func getGetMoreCursorID(in interface{}) (int64, error) {
+	var err error
+	switch t := in.(type) {
+	case *bson.D:
+		for _, bsonDoc := range *t {
+			if bsonDoc.Name == "getMore" {
+				getmoreID, ok := bsonDoc.Value.(int64)
+				if !ok {
+					return 0, fmt.Errorf("cursorID is not int64")
+				}
+				return getmoreID, nil
+			}
+		}
+	case *bson.Raw:
+		doc := &struct {
+			GetMore int64 `bson:"getMore"`
+		}{}
+		err = t.Unmarshal(doc)
+		if err != nil {
+			return 0, fmt.Errorf("failed to unmarshal bson.Raw into struct: %v", err)
+		}
+		return doc.GetMore, nil
+	default:
+		panic("not a *bson.D or *bson.Raw")
+	}
+	return 0, nil
+}
+
+func setCursorID(in interface{}, newCursorIDs []int64) (bson.D, int64, error) {
+	var newCursorID int64
+
+	if len(newCursorIDs) > 1 {
+		return bson.D{}, 0, fmt.Errorf("rewriting getmore command cursorIDs requires 1 id, received: %d", len(newCursorIDs))
+	}
+	if len(newCursorIDs) < 1 {
+		newCursorID = 0
+	} else {
+		newCursorID = newCursorIDs[0]
+	}
+	var doc bson.D
+	switch t := in.(type) {
+	case *bson.D:
+		doc = *t
+	case *bson.Raw:
+		err := t.Unmarshal(&doc)
+		if err != nil {
+			return bson.D{}, 0, fmt.Errorf("failed to unmarshal bson.Raw into struct: %v", err)
+		}
+	default:
+		panic("not a *bson.D or *bson.Raw")
+	}
+
+	// loop over the keys of the bson.D and the set the correct one
+	for i, bsonDoc := range doc {
+		if bsonDoc.Name == "getMore" {
+			doc[i].Value = newCursorID
+			break
+		}
+	}
+	return doc, newCursorID, nil
 }
 
 func getCommandName(rawOp *RawOp) (string, error) {
@@ -156,7 +258,7 @@ func extractErrorsFromDoc(doc *bson.D) []error {
 	return errors
 }
 
-// readCStringFromReader reads a null turminated string from an io.Reader.
+// readCStringFromReader reads a null terminated string from an io.Reader.
 func readCStringFromReader(r io.Reader) ([]byte, error) {
 	var b []byte
 	var n [1]byte
@@ -314,6 +416,9 @@ func ConvertBSONValueToJSON(x interface{}) (interface{}, error) {
 	case int32: // NumberInt
 		return json.NumberInt(v), nil
 
+	case uint8: // NumberInt
+		return json.NumberInt(v), nil
+
 	case float64:
 		return json.NumberFloat(v), nil
 
@@ -354,6 +459,21 @@ func ConvertBSONValueToJSON(x interface{}) (interface{}, error) {
 			}
 		}
 		return json.JavaScript{v.Code, scope}, nil
+
+	case mgo.MsgSection:
+		out := map[string]interface{}{
+			"payloadType": v.PayloadType,
+			"payload":     v.Data,
+		}
+		return ConvertBSONValueToJSON(out)
+
+	case mgo.PayloadType1:
+		out := map[string]interface{}{
+			"size":       v.Size,
+			"identifier": v.Identifier,
+			"documents":  v.Docs,
+		}
+		return ConvertBSONValueToJSON(out)
 
 	default:
 		switch x {
@@ -429,7 +549,36 @@ func (b *PreciseTime) SetBSON(raw bson.Raw) error {
 	return nil
 }
 
-// bufferWaiter is a channel-like structure which only recieves a buffer
+// bsonFromReader reads a bson document from the reader into out.
+func bsonFromReader(reader io.Reader, out interface{}) error {
+	buf, err := ReadDocument(reader)
+	if err != nil {
+		if err != io.EOF {
+			err = fmt.Errorf("ReadDocument Error: %v", err)
+		}
+		return err
+	}
+	err = bson.Unmarshal(buf, out)
+	if err != nil {
+		return fmt.Errorf("Unmarshal RecordedOp Error: %v\n", err)
+	}
+	return nil
+}
+
+// bsonToWriter writes a bson document to the writer given.
+func bsonToWriter(writer io.Writer, in interface{}) error {
+	bsonBytes, err := bson.Marshal(in)
+	if err != nil {
+		return err
+	}
+	_, err = writer.Write(bsonBytes)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// bufferWaiter is a channel-like structure which only receives a buffer
 // from its channel once on the first Get() call, then yields the same
 // buffer upon subsequent Get() calls.
 type bufferWaiter struct {

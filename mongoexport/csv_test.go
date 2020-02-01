@@ -1,18 +1,25 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongoexport
 
 import (
 	"bytes"
 	"encoding/csv"
-	"github.com/mongodb/mongo-tools/common/bsonutil"
-	"github.com/mongodb/mongo-tools/common/testutil"
-	. "github.com/smartystreets/goconvey/convey"
-	"gopkg.in/mgo.v2/bson"
 	"strings"
 	"testing"
+
+	"github.com/mongodb/mongo-tools-common/bsonutil"
+	"github.com/mongodb/mongo-tools-common/testtype"
+	. "github.com/smartystreets/goconvey/convey"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 func TestWriteCSV(t *testing.T) {
-	testutil.VerifyTestType(t, testutil.UnitTestType)
+	testtype.SkipUnlessTestType(t, testtype.UnitTestType)
 
 	Convey("With a CSV export output", t, func() {
 		fields := []string{"_id", "x", " y", "z.1.a"}
@@ -55,7 +62,7 @@ func TestWriteCSV(t *testing.T) {
 		Convey("Exported document with index into nested objects should print correctly", func() {
 			csvExporter := NewCSVExportOutput(fields, true, out)
 			z := []interface{}{"x", bson.D{{"a", "T"}, {"B", 1}}}
-			csvExporter.ExportDocument(bson.D{{Name: "z", Value: z}})
+			csvExporter.ExportDocument(bson.D{{Key: "z", Value: z}})
 			csvExporter.WriteFooter()
 			csvExporter.Flush()
 			rec, err := csv.NewReader(strings.NewReader(out.String())).Read()
@@ -71,6 +78,7 @@ func TestWriteCSV(t *testing.T) {
 }
 
 func TestExtractDField(t *testing.T) {
+	testtype.SkipUnlessTestType(t, testtype.UnitTestType)
 	Convey("With a test bson.D", t, func() {
 		b := []interface{}{"inner", bsonutil.MarshalD{{"inner2", 1}}}
 		c := bsonutil.MarshalD{{"x", 5}}

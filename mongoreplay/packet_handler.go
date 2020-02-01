@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongoreplay
 
 import (
@@ -12,17 +18,19 @@ import (
 
 // PacketHandler wraps pcap.Handle to maintain other useful information.
 type PacketHandler struct {
-	Verbose    bool
-	pcap       *pcap.Handle
-	numDropped int64
-	stop       chan struct{}
+	Verbose          bool
+	pcap             *pcap.Handle
+	assemblerOptions AssemblerOptions
+	numDropped       int64
+	stop             chan struct{}
 }
 
 // NewPacketHandler initializes a new PacketHandler
-func NewPacketHandler(pcapHandle *pcap.Handle) *PacketHandler {
+func NewPacketHandler(pcapHandle *pcap.Handle, assemblerOptions AssemblerOptions) *PacketHandler {
 	return &PacketHandler{
-		pcap: pcapHandle,
-		stop: make(chan struct{}),
+		pcap:             pcapHandle,
+		assemblerOptions: assemblerOptions,
+		stop:             make(chan struct{}),
 	}
 }
 
@@ -55,11 +63,13 @@ func (p *PacketHandler) Handle(streamHandler StreamHandler, numToHandle int) err
 	count := int64(0)
 	start := time.Now()
 	if p.Verbose && numToHandle > 0 {
-		userInfoLogger.Logvf(Always, "Processing", numToHandle, "packets")
+		userInfoLogger.Logvf(Always, "Processing %v %v", numToHandle, "packets")
 	}
 	source := gopacket.NewPacketSource(p.pcap, p.pcap.LinkType())
 	streamPool := NewStreamPool(streamHandler)
 	assembler := NewAssembler(streamPool)
+	assembler.AssemblerOptions = p.assemblerOptions
+
 	defer func() {
 		if userInfoLogger.isInVerbosity(DebugLow) {
 			userInfoLogger.Logv(DebugLow, "flushing assembler.")

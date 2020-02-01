@@ -1,11 +1,10 @@
 (function() {
-  load("jstests/libs/mongostat.js");
+  load("jstests/libs/output.js");
   var port = allocatePort();
   var m = startMongod(
     "--auth",
     "--port", port,
     "--dbpath", MongoRunner.dataPath+"stat_auth"+port,
-    "--nohttpinterface",
     "--bind_ip", "127.0.0.1");
 
   var db = m.getDB("admin");
@@ -27,5 +26,5 @@
   assert.eq(x, exitCodeSuccess, "mongostat should exit successfully with foobar:foobar");
 
   x = runMongoProgram.apply(null, args.concat("--password", "wrong"));
-  assert.eq(x, exitCodeErr, "mongostat should exit with an error exit code with foobar:wrong");
+  assert.eq(x, exitCodeFailure, "mongostat should exit with an error exit code with foobar:wrong");
 }());

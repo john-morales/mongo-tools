@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2014-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 package mongoreplay
 
 import (
@@ -62,4 +68,9 @@ func (lw *logWrapper) Logv(minVerb int, msg string) {
 }
 func (lw *logWrapper) isInVerbosity(minVerb int) bool {
 	return minVerb <= lw.verbosity
+}
+
+func (lw *logWrapper) Output(calldepth int, s string) error {
+	lw.Logv(DebugHigh, s)
+	return nil
 }
