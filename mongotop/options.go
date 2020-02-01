@@ -19,6 +19,7 @@ type Output struct {
 	ListCount int  `long:"listcount" value-name:"<count>" short:"l" description:"number of entry lines to print per stat row (0 defaults to 10)"`
 	SortLatency bool  `long:"sortlatency" short:"s" description:"sort entries by average total ms / op instead of default of total time"`
 	Json      bool `long:"json" description:"format output as JSON"`
+	IgnoreCPU bool `long:"ignorecpu" hidden:"true" description:"Ignore hostInfo CPU result"`
 }
 
 // Name returns a human-readable group name for output options.

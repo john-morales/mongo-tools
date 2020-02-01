@@ -9,6 +9,7 @@ package main
 
 import (
 	"os"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -113,25 +114,28 @@ func main() {
 		os.Exit(util.ExitFailure)
 	}
 
-	hostInfoDoc := struct {
-		System map[string]interface{} `bson:"system"`
-	}{}
-
-	err = sessionProvider.RunString("hostInfo", &hostInfoDoc, "admin")
-	if err != nil {
-		log.Logvf(log.Always, "Failed getting hostInfo: %v", err)
-		os.Exit(util.ExitFailure)
+	hostInfoDoc := mongotop.HostInfo{
+		System: mongotop.HostInfoSystem{
+			NumCores: runtime.NumCPU(),
+		},
 	}
 
-	numCores, ok := hostInfoDoc.System["numCores"].(int)
-	if !ok {
-		log.Logvf(log.Always, "Unexpected hostInfo structure: %#v", hostInfoDoc)
-		os.Exit(util.ExitFailure)
+	if !outputOpts.IgnoreCPU {
+		err = sessionProvider.RunString("hostInfo", &hostInfoDoc, "admin")
+		if err != nil {
+			log.Logvf(log.Always, "Failed getting hostInfo: %v", err)
+			os.Exit(util.ExitFailure)
+		}
+		if hostInfoDoc.System.NumCores <= 0 {
+			log.Logvf(log.Always, "Failed to find valid value for hostInfo numCores")
+			os.Exit(util.ExitFailure)
+		}
 	}
+	log.Logvf(log.Always, "Using num CPU cores value of %v", hostInfoDoc.System.NumCores)
 
 	// instantiate a mongotop instance
 	top := &mongotop.MongoTop{
-		NumCores:        numCores,
+		NumCores:        hostInfoDoc.System.NumCores,
 		Options:         opts,
 		OutputOptions:   outputOpts,
 		SessionProvider: sessionProvider,

@@ -26,6 +26,14 @@ type FormattableDiff interface {
 	Grid() string
 }
 
+type HostInfo struct {
+	System HostInfoSystem `bson:"system"`
+}
+
+type HostInfoSystem struct {
+	NumCores int `bson:"numCores"`
+}
+
 // ServerStatus represents the results of the "serverStatus" command.
 type ServerStatus struct {
 	time  time.Time
