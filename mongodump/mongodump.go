@@ -534,7 +534,13 @@ func (dump *MongoDump) DumpIntent(intent *intents.Intent, buffer resettableOutpu
 	// determine if a collection is a view.
 	collInfo, err := db.GetCollectionInfo(coll)
 	if err != nil {
-		isView = collInfo.IsView()
+		if collInfo != nil {
+			isView = collInfo.IsView()
+		} else {
+			log.Logvf(log.Always,
+				"Failure on intent %v.%v: Err: %v", intent.DB, intent.C, err)
+			return fmt.Errorf("Failure on intent %v.%v: Err: %v", intent.DB, intent.C, err)
+		}
 	}
 	// The storage engine cannot change from namespace to namespace,
 	// so we set it the first time we reach here, using a namespace we

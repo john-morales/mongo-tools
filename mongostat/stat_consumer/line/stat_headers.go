@@ -77,6 +77,7 @@ var (
 		"glems":          {"glems", "Average time waiting for GLE (millis)", "glems"},
 		"r|w|c":          {"r|w|c", "Average execution time per read/write/command (millis)", "r|w|c"},
 		"r%|w%|c%":       {"r%|w%|c%", "Average utilization percent per read/write/command (diff percentage)", "r%|w%|c%"},
+		"appr%|appw%":    {"appr%|appw%", "Average utilization percent application threads page read from disk to cache time (usecs)", "appr%|appw%"},
 
 		"qrw":            {"qrw", "Queued accesses, read|write", "qr|qw"},
 		"arw":            {"arw", "Active accesses, read|write", "ar|aw"},
@@ -129,6 +130,7 @@ var (
 		"glems":          {status.ReadGLEMillis},
 		"r|w|c":          {status.ReadOpLatencies},
 		"r%|w%|c%":       {status.ReadOpLatencyUtilPercent},
+		"appr%|appw%":    {status.ReadApplicationThreadPageToCachePercent},
 
 		"qrw":            {status.ReadQRW},
 		"arw":            {status.ReadARW},
@@ -183,6 +185,7 @@ var (
 		{"glems", FlagMetrics | FlagAll},
 		{"r|w|c", FlagOpLatencies},
 		{"r%|w%|c%", FlagOpLatencies},
+		{"appr%|appw%", FlagWT},
 
 		{"qrw", FlagAlways},
 		{"arw", FlagAlways},

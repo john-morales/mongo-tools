@@ -1,5 +1,6 @@
 #!/bin/bash
 set -o errexit
+set -ex
 tags=""
 if [ ! -z "$1" ]
   then

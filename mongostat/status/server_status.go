@@ -73,6 +73,8 @@ type CacheStats struct {
 	ModifiedPagesEvicted int64 `bson:"modified pages evicted"`
 	UnmodifiedPagesEvicted int64 `bson:"unmodified pages evicted"`
 	InternalPagesEvicted int64 `bson:"internal pages evicted"`
+	ApplicationThreadsPageReadFromDiskToCacheTime int64 `bson:"application threads page read from disk to cache time (usecs)"`
+	ApplicationThreadsPageWriteFromCacheToDiskTime int64 `bson:"application threads page write from cache to disk time (usecs)"`
 }
 
 // TransactionStats stores transaction checkpoints in WiredTiger.

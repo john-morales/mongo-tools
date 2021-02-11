@@ -628,6 +628,21 @@ func ReadOpLatencyUtilPercent(c *ReaderConfig, newStat, oldStat *ServerStatus) (
 	return
 }
 
+func ReadApplicationThreadPageToCachePercent(c *ReaderConfig, newStat, oldStat *ServerStatus) (val string) {
+	if newStat.WiredTiger != nil && oldStat.WiredTiger != nil {
+		sampleMicros := newStat.SampleTime.Sub(oldStat.SampleTime).Nanoseconds() / 1000
+
+		readMicrosDiff := newStat.WiredTiger.Cache.ApplicationThreadsPageReadFromDiskToCacheTime - oldStat.WiredTiger.Cache.ApplicationThreadsPageReadFromDiskToCacheTime
+		writeMicrosDiff := newStat.WiredTiger.Cache.ApplicationThreadsPageWriteFromCacheToDiskTime - oldStat.WiredTiger.Cache.ApplicationThreadsPageWriteFromCacheToDiskTime
+
+		// utilization percent
+		val = fmt.Sprintf("%.1f%%|%.1f%%",
+			percentageInt64(readMicrosDiff, sampleMicros),
+			percentageInt64(writeMicrosDiff, sampleMicros))
+	}
+	return
+}
+
 func ReadQRW(_ *ReaderConfig, newStat, _ *ServerStatus) string {
 	var qr int64
 	var qw int64
