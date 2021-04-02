@@ -70,12 +70,181 @@ type LockDelta struct {
 	Write int64 `json:"write"`
 }
 
+type OperationMetricsDiff struct {
+	numCores         int
+	elapsed          time.Duration
+	currentOperation *OperationMetrics
+	listCount        int
+	sortTotal        bool
+	// namespace -> deltas
+	Totals map[string]OperationMetricsEntryDelta `json:"totals"`
+	Time   time.Time                             `json:"time"`
+}
+
+type OperationMetrics struct {
+	numCores int
+	time     time.Time
+
+	Entries map[string]OperationMetricsEntry
+}
+
+type OperationMetricsEntry struct {
+	DBName string `bson:"db"`
+
+	PrimaryMetrics   OperationMetricsMemberInfo `bson:"primaryMetrics"`
+	SecondaryMetrics OperationMetricsMemberInfo `bson:"secondaryMetrics"`
+
+	DocBytesWritten        int64 `bson:"docBytesWritten"`
+	DocUnitsWritten        int64 `bson:"docUnitsWritten"`
+	IndexEntryBytesWritten int64 `bson:"idxEntryBytesWritten"`
+	IndexEntryUnitsWritten int64 `bson:"idxEntryUnitsWritten"`
+	CpuNanos               int64 `bson:"cpuNanos"`
+}
+
+func (e OperationMetricsEntry) TotalDocUnits() int64 {
+	return e.PrimaryMetrics.DocUnitsRead + e.SecondaryMetrics.DocUnitsRead + e.DocUnitsWritten
+}
+
+type OperationMetricsMemberInfo struct {
+	DocBytesRead        int64 `bson:"docBytesRead"`
+	DocUnitsRead        int64 `bson:"docUnitsRead"`
+	IndexEntryBytesRead int64 `bson:"idxEntryBytesRead"`
+	IndexEntryUnitsRead int64 `bson:"idxEntryUnitsRead"`
+	KeysSorted          int64 `bson:"keysSorted"`
+	SorterSpills        int64 `bson:"sorterSpills"`
+	DocUnitsReturned    int64 `bson:"docUnitsReturned"`
+	CursorSeeks         int64 `bson:"cursorSeeks"`
+}
+
+type OperationMetricsEntryDelta struct {
+	PrimaryMetrics   OperationMetricsMemberInfoDelta
+	SecondaryMetrics OperationMetricsMemberInfoDelta
+
+	DocBytesWritten        int64
+	DocUnitsWritten        int64
+	IndexEntryBytesWritten int64
+	IndexEntryUnitsWritten int64
+	CpuNanos               int64
+}
+
+func (d OperationMetricsEntryDelta) TotalDocUnits() int64 {
+	return d.PrimaryMetrics.DocUnitsRead + d.SecondaryMetrics.DocUnitsRead + d.DocUnitsWritten
+}
+
+type OperationMetricsMemberInfoDelta struct {
+	DocBytesRead        int64
+	DocUnitsRead        int64
+	IndexEntryBytesRead int64
+	IndexEntryUnitsRead int64
+	KeysSorted          int64
+	SorterSpills        int64
+	DocUnitsReturned    int64
+	CursorSeeks         int64
+}
+
+// Diff takes an older sample, and produces a OperationMetricsDiff
+// representing the deltas of each metric between the two samples.
+func (metrics OperationMetrics) Diff(previous OperationMetrics, listCount int, sortTotal bool) OperationMetricsDiff {
+	// The diff to eventually return
+	diff := OperationMetricsDiff{
+		numCores:         previous.numCores,
+		elapsed:          metrics.time.Sub(previous.time),
+		currentOperation: &metrics,
+		listCount:        listCount,
+		sortTotal:        sortTotal,
+		Totals:           map[string]OperationMetricsEntryDelta{},
+		Time:             time.Now(),
+	}
+
+	// For each namespace we are tracking, subtract the times and counts
+	// for total/read/write and build a new map containing the diffs.
+	prevEntries := previous.Entries
+	curEntries := metrics.Entries
+	for ns, prevInfo := range prevEntries {
+		if curInfo, ok := curEntries[ns]; ok {
+			diff.Totals[ns] = OperationMetricsEntryDelta{
+				PrimaryMetrics: OperationMetricsMemberInfoDelta{
+					DocBytesRead:        curInfo.PrimaryMetrics.DocBytesRead - prevInfo.PrimaryMetrics.DocBytesRead,
+					DocUnitsRead:        curInfo.PrimaryMetrics.DocUnitsRead - prevInfo.PrimaryMetrics.DocUnitsRead,
+					IndexEntryBytesRead: curInfo.PrimaryMetrics.IndexEntryBytesRead - prevInfo.PrimaryMetrics.IndexEntryBytesRead,
+					IndexEntryUnitsRead: curInfo.PrimaryMetrics.IndexEntryUnitsRead - prevInfo.PrimaryMetrics.IndexEntryUnitsRead,
+					KeysSorted:          curInfo.PrimaryMetrics.KeysSorted - prevInfo.PrimaryMetrics.KeysSorted,
+					SorterSpills:        curInfo.PrimaryMetrics.SorterSpills - prevInfo.PrimaryMetrics.SorterSpills,
+					DocUnitsReturned:    curInfo.PrimaryMetrics.DocUnitsReturned - prevInfo.PrimaryMetrics.DocUnitsReturned,
+					CursorSeeks:         curInfo.PrimaryMetrics.CursorSeeks - prevInfo.PrimaryMetrics.CursorSeeks,
+				},
+				SecondaryMetrics: OperationMetricsMemberInfoDelta{
+					DocBytesRead:        curInfo.SecondaryMetrics.DocBytesRead - prevInfo.SecondaryMetrics.DocBytesRead,
+					DocUnitsRead:        curInfo.SecondaryMetrics.DocUnitsRead - prevInfo.SecondaryMetrics.DocUnitsRead,
+					IndexEntryBytesRead: curInfo.SecondaryMetrics.IndexEntryBytesRead - prevInfo.SecondaryMetrics.IndexEntryBytesRead,
+					IndexEntryUnitsRead: curInfo.SecondaryMetrics.IndexEntryUnitsRead - prevInfo.SecondaryMetrics.IndexEntryUnitsRead,
+					KeysSorted:          curInfo.SecondaryMetrics.KeysSorted - prevInfo.SecondaryMetrics.KeysSorted,
+					SorterSpills:        curInfo.SecondaryMetrics.SorterSpills - prevInfo.SecondaryMetrics.SorterSpills,
+					DocUnitsReturned:    curInfo.SecondaryMetrics.DocUnitsReturned - prevInfo.SecondaryMetrics.DocUnitsReturned,
+					CursorSeeks:         curInfo.SecondaryMetrics.CursorSeeks - prevInfo.SecondaryMetrics.CursorSeeks,
+				},
+				DocBytesWritten:        curInfo.DocBytesWritten - prevInfo.DocBytesWritten,
+				DocUnitsWritten:        curInfo.DocUnitsWritten - prevInfo.DocUnitsWritten,
+				IndexEntryBytesWritten: curInfo.IndexEntryBytesWritten - prevInfo.IndexEntryBytesWritten,
+				IndexEntryUnitsWritten: curInfo.IndexEntryUnitsWritten - prevInfo.IndexEntryUnitsWritten,
+				CpuNanos:               curInfo.CpuNanos - prevInfo.CpuNanos,
+			}
+		}
+	}
+	return diff
+}
+
+func (od OperationMetricsDiff) Grid() string {
+	listCount := od.listCount
+	if listCount == 0 {
+		listCount = 9
+	}
+
+	buf := &bytes.Buffer{}
+	out := &text.GridWriter{ColumnPadding: 4}
+	out.WriteCells("                                              ns", "||TOTAL||", "total Units/s", "total RUnits/s", "total WUnits/s", time.Now().Format("2006-01-02T15:04:05Z07:00"))
+	out.EndRow()
+
+	totals := make(sortableTotals, 0, len(od.Totals))
+	for ns, diff := range od.Totals {
+		if od.sortTotal {
+			//Sort by total doc units
+			totals = append(totals, sortableTotal{ns, float64(diff.TotalDocUnits()), int64(od.currentOperation.Entries[ns].TotalDocUnits())})
+		} else {
+			//Sort by cpuNanos
+			totals = append(totals, sortableTotal{ns, float64(diff.CpuNanos), int64(od.currentOperation.Entries[ns].CpuNanos)})
+		}
+	}
+
+	elapsedSeconds := float64(int64(od.elapsed) / 1e9)
+	sort.Sort(sort.Reverse(totals))
+	for i, st := range totals {
+		diff := od.Totals[st.Name]
+		out.WriteCells(st.Name,
+			"",
+			fmt.Sprintf("%0.1fUnits/s", float64(diff.TotalDocUnits())/elapsedSeconds),
+			fmt.Sprintf("%0.1fRUnits/s", float64(diff.PrimaryMetrics.DocUnitsRead+diff.SecondaryMetrics.DocUnitsRead)/elapsedSeconds),
+			fmt.Sprintf("%0.1fWUnits/s", float64(diff.DocUnitsWritten)/elapsedSeconds),
+			"")
+		out.EndRow()
+		if i >= listCount-1 {
+			break
+		}
+	}
+	out.Flush(buf)
+	return buf.String()
+}
+
+func (od OperationMetricsDiff) JSON() string {
+	return "{\"unsupported\": true}"
+}
+
 // TopDiff contains a map of the differences between top samples for each namespace.
 type TopDiff struct {
-	numCores   int
-	elapsed    time.Duration
-	currentTop *Top
-	listCount  int
+	numCores    int
+	elapsed     time.Duration
+	currentTop  *Top
+	listCount   int
 	sortLatency bool
 	// namespace -> totals
 	Totals map[string]NSTopInfo `json:"totals"`
@@ -85,8 +254,8 @@ type TopDiff struct {
 // Top holds raw output of the "top" command.
 type Top struct {
 	numCores int
-	time   time.Time
-	Totals map[string]NSTopInfo `bson:"totals"`
+	time     time.Time
+	Totals   map[string]NSTopInfo `bson:"totals"`
 }
 
 // NSTopInfo holds information about a single namespace.
@@ -137,13 +306,13 @@ func (a sortableTotals) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (top Top) Diff(previous Top, listCount int, sortLatency bool) TopDiff {
 	// The diff to eventually return
 	diff := TopDiff{
-		numCores:   previous.numCores,
-		elapsed:    top.time.Sub(previous.time),
-		currentTop: &top,
-		listCount:  listCount,
+		numCores:    previous.numCores,
+		elapsed:     top.time.Sub(previous.time),
+		currentTop:  &top,
+		listCount:   listCount,
 		sortLatency: sortLatency,
-		Totals:     map[string]NSTopInfo{},
-		Time:       time.Now(),
+		Totals:      map[string]NSTopInfo{},
+		Time:        time.Now(),
 	}
 
 	// For each namespace we are tracking, subtract the times and counts
@@ -187,15 +356,15 @@ func (td TopDiff) Grid() string {
 	for ns, diff := range td.Totals {
 		if td.sortLatency {
 			//Sort by total latency (ms/op)
-			totals = append(totals, sortableTotal{ns, float64(diff.Total.Time)/float64(diff.Total.Count), int64(td.currentTop.Totals[ns].Total.Time)})
+			totals = append(totals, sortableTotal{ns, float64(diff.Total.Time) / float64(diff.Total.Count), int64(td.currentTop.Totals[ns].Total.Time)})
 		} else {
 			//Sort by total time
 			totals = append(totals, sortableTotal{ns, float64(diff.Total.Time), int64(td.currentTop.Totals[ns].Total.Time)})
 		}
 	}
 
-	elapsedMillis := float64(int64(td.elapsed)/1e6)
-	elapsedSeconds := float64(int64(td.elapsed)/1e9)
+	elapsedMillis := float64(int64(td.elapsed) / 1e6)
+	elapsedSeconds := float64(int64(td.elapsed) / 1e9)
 	sort.Sort(sort.Reverse(totals))
 	for i, st := range totals {
 		diff := td.Totals[st.Name]
@@ -215,7 +384,7 @@ func (td TopDiff) Grid() string {
 			fmt.Sprintf("%0.1fop/s", float64(diff.Write.Count)/elapsedSeconds),
 			"")
 		out.EndRow()
-		if i >= listCount - 1 {
+		if i >= listCount-1 {
 			break
 		}
 	}
@@ -270,7 +439,7 @@ func (ssd ServerStatusDiff) Grid() string {
 			fmt.Sprintf("%vms", diff.Write),
 			"")
 		out.EndRow()
-		if i >= listCount - 1 {
+		if i >= listCount-1 {
 			break
 		}
 	}

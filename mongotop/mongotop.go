@@ -8,6 +8,7 @@
 package mongotop
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -37,13 +38,16 @@ type MongoTop struct {
 	// Length of time to sleep between each polling.
 	Sleeptime time.Duration
 
-	previousServerStatus *ServerStatus
-	previousTop          *Top
+	previousOperationMetrics *OperationMetrics
+	previousServerStatus     *ServerStatus
+	previousTop              *Top
 }
 
 func (mt *MongoTop) runDiff() (outDiff FormattableDiff, err error) {
 	if mt.OutputOptions.Locks {
 		return mt.runServerStatusDiff()
+	} else if mt.OutputOptions.OperationMetrics {
+		return mt.runOperationMetricsDiff()
 	}
 	return mt.runTopDiff()
 }
@@ -107,6 +111,47 @@ func (mt *MongoTop) runServerStatusDiff() (outDiff FormattableDiff, err error) {
 		outDiff = serverStatusDiff
 	}
 	mt.previousServerStatus = &currentServerStatus
+	return outDiff, nil
+}
+
+func (mt *MongoTop) runOperationMetricsDiff() (outDiff FormattableDiff, err error) {
+	now := time.Now()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	pipeline := []bson.M{{"$operationMetrics": bson.M{}}}
+	cursor, err := mt.SessionProvider.DB("admin").Aggregate(ctx, pipeline)
+	if err != nil {
+		mt.previousOperationMetrics = nil
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	currentOperationMetrics := OperationMetrics{
+		numCores: mt.NumCores,
+		time:     now,
+		Entries:  make(map[string]OperationMetricsEntry),
+	}
+
+	for cursor.Next(ctx) {
+		var entry OperationMetricsEntry
+		err := cursor.Decode(&entry)
+		if err != nil {
+			return nil, fmt.Errorf("failure decoding from cursor, err: %v", err)
+		}
+
+		currentOperationMetrics.Entries[entry.DBName] = entry
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("failure reading from cursor, err: %v", err)
+	}
+
+	if mt.previousOperationMetrics != nil {
+		diff := currentOperationMetrics.Diff(*mt.previousOperationMetrics, mt.OutputOptions.ListCount, mt.OutputOptions.SortLatency)
+		outDiff = diff
+	}
+	mt.previousOperationMetrics = &currentOperationMetrics
 	return outDiff, nil
 }
 
